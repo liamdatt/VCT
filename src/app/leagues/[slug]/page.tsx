@@ -3,6 +3,7 @@ import { getDashboard } from '@/server/queries/dashboard';
 import { LiveMatchHero } from '@/components/dashboard/LiveMatchHero';
 import { MyPlayersInMatch } from '@/components/dashboard/MyPlayersInMatch';
 import { CompressedStandings } from '@/components/dashboard/CompressedStandings';
+import { DashboardLiveClient } from '@/components/dashboard/DashboardLiveClient';
 
 export default async function DashboardPage({
   params,
@@ -60,6 +61,7 @@ export default async function DashboardPage({
 
   return (
     <main className="mx-auto max-w-2xl space-y-4 p-6">
+      <DashboardLiveClient slug={slug} />
       {heroProps ? (
         <LiveMatchHero {...heroProps} />
       ) : (
