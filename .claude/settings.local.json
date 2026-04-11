@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(curl -sS -o /dev/null -w \"%{http_code}\" http://localhost:58567)",
+      "Bash(/Users/liamdatt/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.6/skills/brainstorming/scripts/start-server.sh:*)"
+    ]
+  }
+}
