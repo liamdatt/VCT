@@ -1,0 +1,376 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  COMMISSIONER
+}
+
+enum LeagueStatus {
+  DRAFT_PENDING
+  DRAFTING
+  ACTIVE
+  COMPLETED
+}
+
+enum AcquiredVia {
+  DRAFT
+  TRADE
+  FREE_AGENCY
+  SEED
+}
+
+enum MatchStatus {
+  UPCOMING
+  LIVE
+  COMPLETED
+}
+
+enum MatchFormat {
+  BO1
+  BO3
+  BO5
+}
+
+enum TradeStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  REVERSED
+}
+
+enum TradeDirection {
+  PROPOSER_TO_RECEIVER
+  RECEIVER_TO_PROPOSER
+}
+
+enum DraftStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+}
+
+model User {
+  id         String   @id @default(cuid())
+  discordId  String   @unique
+  username   String
+  avatarUrl  String?
+  role       UserRole @default(USER)
+  createdAt  DateTime @default(now())
+
+  memberships   LeagueMembership[]
+  rosterSlots   RosterSlot[]
+  captainChanges CaptainChange[]
+  tradesProposed Trade[] @relation("TradesProposed")
+  tradesReceived Trade[] @relation("TradesReceived")
+  freeAgency    FreeAgencyAction[]
+  draftPicks    DraftPick[]
+  adjustments   ScoringAdjustment[] @relation("AdjustmentTarget")
+  adjustmentsBy ScoringAdjustment[] @relation("AdjustmentAuthor")
+}
+
+model League {
+  id                 String       @id @default(cuid())
+  slug               String       @unique
+  name               String
+  vlrEventId         String?
+  status             LeagueStatus @default(DRAFT_PENDING)
+  startDate          DateTime
+  endDate            DateTime?
+  timezone           String       @default("America/Jamaica")
+  discordWebhookUrl  String?
+  settingsJson       Json
+  createdAt          DateTime     @default(now())
+
+  memberships   LeagueMembership[]
+  teams         Team[]
+  players       Player[]
+  rosterSlots   RosterSlot[]
+  captainChanges CaptainChange[]
+  draft         Draft?
+  matches       Match[]
+  trades        Trade[]
+  freeAgency    FreeAgencyAction[]
+  tradeBonusCooldowns TradeBonusCooldown[]
+  snapshots     ScoringSnapshot[]
+  adjustments   ScoringAdjustment[]
+  ingestErrors  IngestError[]
+}
+
+model LeagueMembership {
+  id            String  @id @default(cuid())
+  userId        String
+  leagueId      String
+  rosterLocked  Boolean @default(false)
+  finalRank     Int?
+  finalPoints   Float?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, leagueId])
+}
+
+model Team {
+  id         String @id @default(cuid())
+  leagueId   String
+  vlrTeamId  String
+  name       String
+  shortCode  String
+  logoUrl    String?
+
+  league  League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  players Player[]
+  matchesAsTeam1 Match[] @relation("MatchTeam1")
+  matchesAsTeam2 Match[] @relation("MatchTeam2")
+  gameWins  Game[] @relation("GameWinner")
+
+  @@unique([leagueId, vlrTeamId])
+}
+
+model Player {
+  id          String @id @default(cuid())
+  leagueId    String
+  vlrPlayerId String
+  teamId      String
+  handle      String
+  country     String?
+  role        String?
+
+  league      League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  rosterSlots RosterSlot[]
+  stats       PlayerGameStat[]
+  draftPicks  DraftPick[]
+  freeAgencyDrops   FreeAgencyAction[] @relation("FADropped")
+  freeAgencyPickups FreeAgencyAction[] @relation("FAPickedUp")
+  tradeItems  TradeItem[]
+  cooldowns   TradeBonusCooldown[]
+  snapshots   ScoringSnapshot[]
+  captainChangeOld CaptainChange[] @relation("CaptainOld")
+  captainChangeNew CaptainChange[] @relation("CaptainNew")
+
+  @@unique([leagueId, vlrPlayerId])
+}
+
+model RosterSlot {
+  id           String      @id @default(cuid())
+  userId       String
+  leagueId     String
+  playerId     String
+  isCaptain    Boolean     @default(false)
+  acquiredAt   DateTime    @default(now())
+  acquiredVia  AcquiredVia
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, playerId])
+  @@index([userId, leagueId])
+}
+
+model CaptainChange {
+  id           String   @id @default(cuid())
+  userId       String
+  leagueId     String
+  oldPlayerId  String?
+  newPlayerId  String
+  changedAt    DateTime @default(now())
+
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league     League  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  oldPlayer  Player? @relation("CaptainOld", fields: [oldPlayerId], references: [id])
+  newPlayer  Player  @relation("CaptainNew", fields: [newPlayerId], references: [id])
+
+  @@index([userId, leagueId, changedAt])
+}
+
+model Draft {
+  id              String      @id @default(cuid())
+  leagueId        String      @unique
+  status          DraftStatus @default(PENDING)
+  currentRound    Int         @default(1)
+  currentPickIndex Int        @default(0)
+  pickOrderJson   Json
+  createdAt       DateTime    @default(now())
+  completedAt     DateTime?
+
+  league League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  picks  DraftPick[]
+}
+
+model DraftPick {
+  id         String   @id @default(cuid())
+  draftId    String
+  round      Int
+  pickNumber Int
+  userId     String
+  playerId   String
+  pickedAt   DateTime @default(now())
+
+  draft  Draft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+  player Player @relation(fields: [playerId], references: [id])
+
+  @@unique([draftId, pickNumber])
+}
+
+model Match {
+  id           String      @id @default(cuid())
+  leagueId     String
+  vlrMatchId   String
+  team1Id      String
+  team2Id      String
+  scheduledAt  DateTime
+  status       MatchStatus @default(UPCOMING)
+  format       MatchFormat @default(BO3)
+  finalScore   String?
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  team1  Team   @relation("MatchTeam1", fields: [team1Id], references: [id])
+  team2  Team   @relation("MatchTeam2", fields: [team2Id], references: [id])
+  games  Game[]
+
+  @@unique([leagueId, vlrMatchId])
+  @@index([leagueId, status, scheduledAt])
+}
+
+model Game {
+  id            String    @id @default(cuid())
+  matchId       String
+  mapNumber     Int
+  mapName       String
+  team1Score    Int
+  team2Score    Int
+  winnerTeamId  String?
+  completedAt   DateTime?
+
+  match         Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  winnerTeam    Team?    @relation("GameWinner", fields: [winnerTeamId], references: [id])
+  stats         PlayerGameStat[]
+  snapshots     ScoringSnapshot[]
+
+  @@unique([matchId, mapNumber])
+}
+
+model PlayerGameStat {
+  id        String  @id @default(cuid())
+  gameId    String
+  playerId  String
+  kills     Int
+  deaths    Int
+  assists   Int
+  aces      Int     @default(0)
+  won       Boolean
+
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, playerId])
+}
+
+model Trade {
+  id          String      @id @default(cuid())
+  leagueId    String
+  proposerId  String
+  receiverId  String
+  status      TradeStatus @default(PROPOSED)
+  createdAt   DateTime    @default(now())
+  resolvedAt  DateTime?
+
+  league    League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  proposer  User        @relation("TradesProposed", fields: [proposerId], references: [id])
+  receiver  User        @relation("TradesReceived", fields: [receiverId], references: [id])
+  items     TradeItem[]
+
+  @@index([leagueId, status])
+}
+
+model TradeItem {
+  id         String         @id @default(cuid())
+  tradeId    String
+  playerId   String
+  direction  TradeDirection
+
+  trade  Trade  @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id])
+}
+
+model TradeBonusCooldown {
+  id         String   @id @default(cuid())
+  leagueId   String
+  playerId   String
+  expiresAt  DateTime
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, playerId])
+}
+
+model FreeAgencyAction {
+  id                String   @id @default(cuid())
+  leagueId          String
+  userId            String
+  droppedPlayerId   String
+  pickedUpPlayerId  String
+  happenedAt        DateTime @default(now())
+
+  league          League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user            User   @relation(fields: [userId], references: [id])
+  droppedPlayer   Player @relation("FADropped", fields: [droppedPlayerId], references: [id])
+  pickedUpPlayer  Player @relation("FAPickedUp", fields: [pickedUpPlayerId], references: [id])
+
+  @@index([leagueId, userId, happenedAt])
+}
+
+model ScoringSnapshot {
+  id             String   @id @default(cuid())
+  leagueId       String
+  userId         String
+  playerId       String
+  gameId         String
+  total          Float
+  captainApplied Boolean  @default(false)
+  breakdownJson  Json
+  computedAt     DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id])
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId, playerId, gameId])
+  @@index([leagueId, userId])
+}
+
+model ScoringAdjustment {
+  id            String   @id @default(cuid())
+  leagueId      String
+  userId        String
+  delta         Float
+  reason        String
+  createdByUserId String
+  createdAt     DateTime @default(now())
+
+  league      League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user        User   @relation("AdjustmentTarget", fields: [userId], references: [id])
+  createdBy   User   @relation("AdjustmentAuthor", fields: [createdByUserId], references: [id])
+}
+
+model IngestError {
+  id          String   @id @default(cuid())
+  leagueId    String
+  context     String
+  message     String
+  payloadJson Json?
+  createdAt   DateTime @default(now())
+
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+}
