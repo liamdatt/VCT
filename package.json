@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "seed:stage1": "tsx scripts/seed-stage1.ts"
+    "seed:stage1": "tsx scripts/seed-stage1.ts",
+    "test:int": "docker compose -f docker-compose.test.yml up -d && sleep 2 && DATABASE_URL=postgresql://vct:vct_test_pw@localhost:5434/vctfantasy_test npx prisma migrate deploy && vitest run tests/integration"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
