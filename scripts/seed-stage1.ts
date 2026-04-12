@@ -337,14 +337,30 @@ async function main(): Promise<void> {
   }
   console.log(`[seed] upserted ${PLAYERS.length} players`);
 
-  // Fetch event match list (fast — single API call) to find completed match IDs
-  console.log(`[seed] fetching event ${VLR_EVENT_ID} match list`);
-  const summaries = await vlrapi.getEventMatches(VLR_EVENT_ID);
-  console.log(`[seed] ${summaries.length} matches in event`);
-  const completedMatchIds = summaries
-    .filter((s) => s.status.toLowerCase() === 'completed')
-    .map((s) => s.match_id);
-  console.log(`[seed] ${completedMatchIds.length} completed matches to ingest`);
+  // Find completed match IDs. Try the API first; if it times out (vlr.gg
+  // rate-limiting), fall back to skipping historical ingest. The scoring
+  // worker will pick them up once the rate limit lifts.
+  let completedMatchIds: string[] = [];
+  const SKIP_INGEST = process.env.SKIP_MATCH_INGEST === '1';
+  if (SKIP_INGEST) {
+    console.log('[seed] SKIP_MATCH_INGEST=1 — skipping historical match fetch');
+  } else {
+    try {
+      console.log(`[seed] fetching event ${VLR_EVENT_ID} match list`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20_000);
+      const summaries = await vlrapi.getEventMatches(VLR_EVENT_ID);
+      clearTimeout(timeout);
+      console.log(`[seed] ${summaries.length} matches in event`);
+      completedMatchIds = summaries
+        .filter((s) => s.status.toLowerCase() === 'completed')
+        .map((s) => s.match_id);
+      console.log(`[seed] ${completedMatchIds.length} completed matches to ingest`);
+    } catch (err) {
+      console.warn(`[seed] vlrapi unavailable (rate-limited?) — skipping historical ingest: ${String(err)}`);
+      console.warn('[seed] the scoring worker will backfill once vlr.gg is reachable');
+    }
+  }
 
   // ---- 5. Verify required handles exist ------------------------------------
   const requiredHandles = new Set<string>();
@@ -546,6 +562,11 @@ async function main(): Promise<void> {
   }
 
   // ---- 10. Validate totals -----------------------------------------------
+  if (completedMatchIds.length === 0) {
+    console.log('[seed] no matches ingested — skipping validation (worker will backfill)');
+    console.log('[seed] Stage 1 bootstrap complete (rosters seeded, matches pending)');
+    return;
+  }
   console.log('[seed] validating manager totals');
   let anyFail = false;
   for (const u of SEED_USERS) {
