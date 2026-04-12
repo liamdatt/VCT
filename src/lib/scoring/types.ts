@@ -3,7 +3,7 @@ export type LeagueSettings = {
   deathPts: number;       // -1
   assistPts: number;      // 1.5
   acePts: number;         // 5
-  winPts: number;         // 10
+  winPts: number;         // 15
   lossPts: number;        // -5
   captainMultiplier: number; // 1.5
   captainCooldownDays: number; // 7
@@ -17,7 +17,7 @@ export const DEFAULT_LEAGUE_SETTINGS: LeagueSettings = {
   deathPts: -1,
   assistPts: 1.5,
   acePts: 5,
-  winPts: 10,
+  winPts: 15,
   lossPts: -5,
   captainMultiplier: 1.5,
   captainCooldownDays: 7,

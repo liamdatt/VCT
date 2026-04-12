@@ -25,9 +25,9 @@ describe('computeGamePoints', () => {
     expect(r.acesPts).toBe(10);
   });
 
-  it('awards +10 for a win', () => {
+  it('awards +15 for a win', () => {
     const r = computeGamePoints({ kills: 0, deaths: 0, assists: 0, aces: 0, won: true }, S);
-    expect(r.winBonus).toBe(10);
+    expect(r.winBonus).toBe(15);
   });
 
   it('subtracts 5 for a loss', () => {
@@ -42,8 +42,8 @@ describe('computeGamePoints', () => {
     expect(r.assistsPts).toBe(7.5);
     expect(r.acesPts).toBe(5);
     expect(r.base).toBe(48.5);
-    expect(r.winBonus).toBe(10);
-    expect(r.total).toBe(58.5);
+    expect(r.winBonus).toBe(15);
+    expect(r.total).toBe(63.5);
   });
 
   it('handles all zeros (loss)', () => {
@@ -54,7 +54,7 @@ describe('computeGamePoints', () => {
 
   it('handles all zeros (win)', () => {
     const r = computeGamePoints({ kills: 0, deaths: 0, assists: 0, aces: 0, won: true }, S);
-    expect(r.total).toBe(10);
+    expect(r.total).toBe(15);
   });
 
   it('respects custom settings (double kill points)', () => {
