@@ -71,7 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         dbUser = await db.user.create({
           data: {
             discordId: snowflake,
-            username,
+            username: displayName,
             avatarUrl,
           },
         });
