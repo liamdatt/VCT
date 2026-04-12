@@ -423,15 +423,20 @@ async function main(): Promise<void> {
   // inside the single-league bootstrap is safe (snapshots carry their own
   // userId column and are attributed at ingest time).
 
-  // Clear all roster slots for the league for the seed managers. This is
-  // safe because this script is the only owner of initial roster state.
-  const seedUserIds = [...userIdByUsername.values()];
-  await db.rosterSlot.deleteMany({
-    where: { leagueId: league.id, userId: { in: seedUserIds } },
+  // Clear ALL roster slots + captain changes for this league (not just seed
+  // users) so re-runs don't hit unique constraint violations. Safe because
+  // this is a one-time bootstrap and we're about to re-create everything.
+  await db.rosterSlot.deleteMany({ where: { leagueId: league.id } });
+  await db.captainChange.deleteMany({ where: { leagueId: league.id } });
+  // Also clear scoring snapshots + free agency actions from prior partial runs
+  await db.scoringSnapshot.deleteMany({ where: { leagueId: league.id } });
+  await db.freeAgencyAction.deleteMany({ where: { leagueId: league.id } });
+  await db.playerGameStat.deleteMany({
+    where: { game: { match: { leagueId: league.id } } },
   });
-  await db.captainChange.deleteMany({
-    where: { leagueId: league.id, userId: { in: seedUserIds } },
-  });
+  await db.game.deleteMany({ where: { match: { leagueId: league.id } } });
+  await db.match.deleteMany({ where: { leagueId: league.id } });
+  console.log('[seed] cleared prior roster/match/scoring state');
 
   // Pre-ingest Liam roster: swap okeanos → Less.
   const preIngestRosters = ROSTERS.map((r) => {
