@@ -187,93 +187,166 @@ async function main(): Promise<void> {
   });
   console.log(`[seed] league ${league.slug} (${league.id})`);
 
-  // ---- 2. Walk event matches for team/player discovery --------------------
+  // ---- 2. Hardcoded teams + players (avoids scraping all 30 matches) ------
+  // vlrapi scrapes vlr.gg live per request (~2min each when rate-limited).
+  // Hardcoding the 12 Americas teams + all known players from the spreadsheet
+  // is instant. The scoring worker will discover any new players as matches
+  // are ingested going forward.
+
+  const TEAMS: Array<{ name: string; tag: string }> = [
+    { name: '100 Thieves', tag: '100T' },
+    { name: 'Cloud9', tag: 'C9' },
+    { name: 'ENVY', tag: 'ENVY' },
+    { name: 'Evil Geniuses', tag: 'EG' },
+    { name: 'FURIA', tag: 'FURIA' },
+    { name: 'G2 Esports', tag: 'G2' },
+    { name: 'KRÜ Esports', tag: 'KRÜ' },
+    { name: 'LEVIATÁN', tag: 'LEV' },
+    { name: 'LOUD', tag: 'LOUD' },
+    { name: 'MIBR', tag: 'MIBR' },
+    { name: 'NRG', tag: 'NRG' },
+    { name: 'Sentinels', tag: 'SEN' },
+  ];
+
+  // Map spreadsheet shortcodes → real vlrapi team names
+  const SHORT_TO_FULL: Record<string, string> = {
+    '100T': '100 Thieves',
+    'C9': 'Cloud9',
+    'ENVY': 'ENVY',
+    'EG': 'Evil Geniuses',
+    'FURIA': 'FURIA',
+    'G2': 'G2 Esports',
+    'KRUE': 'KRÜ Esports',
+    'KRU E': 'KRÜ Esports',
+    'Leviatan': 'LEVIATÁN',
+    'LOUD': 'LOUD',
+    'MIBR': 'MIBR',
+    'NRG': 'NRG',
+    'SEN': 'Sentinels',
+  };
+
+  // All players from the spreadsheet's "All Players" column
+  const PLAYERS: Array<{ handle: string; teamShort: string }> = [
+    { handle: 'tex', teamShort: 'MIBR' },
+    { handle: 'Saadhak', teamShort: 'KRUE' },
+    { handle: 'Less', teamShort: 'KRUE' },
+    { handle: 'mwzera', teamShort: 'KRUE' },
+    { handle: 'zekken', teamShort: 'MIBR' },
+    { handle: 'Mazino', teamShort: 'MIBR' },
+    { handle: 'Verno', teamShort: 'MIBR' },
+    { handle: 'aspas', teamShort: 'MIBR' },
+    { handle: 'silentzz', teamShort: 'KRUE' },
+    { handle: 'Dantedue5', teamShort: 'KRUE' },
+    { handle: 'babybay', teamShort: 'G2' },
+    { handle: 'trent', teamShort: 'G2' },
+    { handle: 'valyn', teamShort: 'G2' },
+    { handle: 'johnqt', teamShort: 'SEN' },
+    { handle: 'leaf', teamShort: 'G2' },
+    { handle: 'reduxx', teamShort: 'SEN' },
+    { handle: 'jawgemo', teamShort: 'G2' },
+    { handle: 'Victor', teamShort: 'SEN' },
+    { handle: 'cortezia', teamShort: 'SEN' },
+    { handle: 'JonahP', teamShort: 'SEN' },
+    { handle: 'Bang', teamShort: '100T' },
+    { handle: 'mada', teamShort: 'NRG' },
+    { handle: 'brawk', teamShort: 'NRG' },
+    { handle: 'Asuna', teamShort: '100T' },
+    { handle: 'Cryocells', teamShort: '100T' },
+    { handle: 'Vora', teamShort: '100T' },
+    { handle: 'Timotino', teamShort: '100T' },
+    { handle: 'v1c', teamShort: 'C9' },
+    { handle: 'Xeppaa', teamShort: 'C9' },
+    { handle: 'keiko', teamShort: 'NRG' },
+    { handle: 'skuba', teamShort: 'NRG' },
+    { handle: 'koalanoob', teamShort: 'FURIA' },
+    { handle: 'artzin', teamShort: 'FURIA' },
+    { handle: 'penny', teamShort: 'C9' },
+    { handle: 'Zellsis', teamShort: 'C9' },
+    { handle: 'nerve', teamShort: 'FURIA' },
+    { handle: 'alym', teamShort: 'FURIA' },
+    { handle: 'Ethan', teamShort: 'NRG' },
+    { handle: 'eeiu', teamShort: 'FURIA' },
+    { handle: 'dgzin', teamShort: 'EG' },
+    { handle: 'Rossy', teamShort: 'ENVY' },
+    { handle: 'kiNgg', teamShort: 'Leviatan' },
+    { handle: 'Keznit', teamShort: 'ENVY' },
+    { handle: 'okeanos', teamShort: 'EG' },
+    { handle: 'supamen', teamShort: 'EG' },
+    { handle: 'Sato', teamShort: 'Leviatan' },
+    { handle: 'bao', teamShort: 'EG' },
+    { handle: 'P0PPIN', teamShort: 'ENVY' },
+    { handle: 'Eggsterr', teamShort: 'ENVY' },
+    { handle: 'OXY', teamShort: 'C9' },
+    { handle: 'C0M', teamShort: 'EG' },
+    { handle: 'blowz', teamShort: 'Leviatan' },
+    { handle: 'spike', teamShort: 'Leviatan' },
+    { handle: 'Demon1', teamShort: 'ENVY' },
+    { handle: 'Neon', teamShort: 'Leviatan' },
+    { handle: 'Jerrwin', teamShort: 'SEN' },
+    { handle: 'lukxo', teamShort: 'LOUD' },
+    { handle: 'pANcada', teamShort: 'LOUD' },
+    { handle: 'cauanzin', teamShort: 'LOUD' },
+    { handle: 'Virtyy', teamShort: 'LOUD' },
+    { handle: 'PxS', teamShort: 'Leviatan' },
+    { handle: 'Darker', teamShort: 'LOUD' },
+    { handle: 'Canezerra', teamShort: 'ENVY' },
+    { handle: 'Basic', teamShort: 'FURIA' },
+  ];
+
+  // ---- 3. Upsert Team rows ------------------------------------------------
+  for (const t of TEAMS) {
+    await db.team.upsert({
+      where: {
+        leagueId_vlrTeamId: { leagueId: league.id, vlrTeamId: t.name },
+      },
+      update: { name: t.name, shortCode: t.tag },
+      create: {
+        leagueId: league.id,
+        vlrTeamId: t.name,
+        name: t.name,
+        shortCode: t.tag,
+      },
+    });
+  }
+  console.log(`[seed] upserted ${TEAMS.length} teams`);
+
+  // ---- 4. Upsert Player rows from hardcoded list -------------------------
+  for (const p of PLAYERS) {
+    const fullTeamName = SHORT_TO_FULL[p.teamShort] ?? p.teamShort;
+    const team = await db.team.findUnique({
+      where: {
+        leagueId_vlrTeamId: { leagueId: league.id, vlrTeamId: fullTeamName },
+      },
+    });
+    if (!team) {
+      console.warn(`[seed] team not found for ${p.handle} (${fullTeamName}) — skipping`);
+      continue;
+    }
+    await db.player.upsert({
+      where: {
+        leagueId_vlrPlayerId: { leagueId: league.id, vlrPlayerId: p.handle },
+      },
+      update: { teamId: team.id, handle: p.handle },
+      create: {
+        leagueId: league.id,
+        vlrPlayerId: p.handle,
+        teamId: team.id,
+        handle: p.handle,
+      },
+    });
+  }
+  console.log(`[seed] upserted ${PLAYERS.length} players`);
+
+  // Fetch event match list (fast — single API call) to find completed match IDs
   console.log(`[seed] fetching event ${VLR_EVENT_ID} match list`);
   const summaries = await vlrapi.getEventMatches(VLR_EVENT_ID);
   console.log(`[seed] ${summaries.length} matches in event`);
+  const completedMatchIds = summaries
+    .filter((s) => s.status.toLowerCase() === 'completed')
+    .map((s) => s.match_id);
+  console.log(`[seed] ${completedMatchIds.length} completed matches to ingest`);
 
-  type TeamInfo = { name: string; tag: string };
-  const teamInfo = new Map<string, TeamInfo>();
-  // playerHandle -> set of teamNames (usually 1)
-  const playerTeam = new Map<string, string>();
-  const completedMatchIds: string[] = [];
-
-  for (const summary of summaries) {
-    let detail;
-    try {
-      detail = await vlrapi.getMatch(summary.match_id);
-    } catch (err) {
-      console.warn(`[seed] skip match ${summary.match_id}: ${String(err)}`);
-      continue;
-    }
-    const [tA, tB] = detail.teams;
-    if (!tA || !tB) continue;
-
-    for (const t of [tA, tB]) {
-      if (!teamInfo.has(t.name)) {
-        teamInfo.set(t.name, { name: t.name, tag: t.tag ?? '' });
-      }
-    }
-
-    if (detail.status.toLowerCase() === 'final' || detail.status.toLowerCase() === 'completed') {
-      completedMatchIds.push(detail.match_id);
-    }
-
-    for (const map of detail.maps ?? []) {
-      for (const key of ['team1', 'team2'] as const) {
-        const teamName = key === 'team1' ? tA.name : tB.name;
-        const lines = map.players?.[key] ?? [];
-        for (const line of lines) {
-          if (!line.name) continue;
-          if (!playerTeam.has(line.name)) {
-            playerTeam.set(line.name, teamName);
-          }
-        }
-      }
-    }
-  }
-
-  // ---- 3. Upsert Team rows ------------------------------------------------
-  for (const info of teamInfo.values()) {
-    await db.team.upsert({
-      where: {
-        leagueId_vlrTeamId: { leagueId: league.id, vlrTeamId: info.name },
-      },
-      update: { name: info.name, shortCode: info.tag },
-      create: {
-        leagueId: league.id,
-        vlrTeamId: info.name,
-        name: info.name,
-        shortCode: info.tag,
-      },
-    });
-  }
-  console.log(`[seed] upserted ${teamInfo.size} teams`);
-
-  // ---- 4. Upsert Player rows (discovered from matches) -------------------
-  for (const [handle, teamName] of playerTeam.entries()) {
-    const team = await db.team.findUnique({
-      where: {
-        leagueId_vlrTeamId: { leagueId: league.id, vlrTeamId: teamName },
-      },
-    });
-    if (!team) continue;
-    await db.player.upsert({
-      where: {
-        leagueId_vlrPlayerId: { leagueId: league.id, vlrPlayerId: handle },
-      },
-      update: { teamId: team.id, handle },
-      create: {
-        leagueId: league.id,
-        vlrPlayerId: handle,
-        teamId: team.id,
-        handle,
-      },
-    });
-  }
-  console.log(`[seed] upserted ${playerTeam.size} players from match walk`);
-
-  // ---- 5. Ensure all roster handles + Less + okeanos exist ----------------
+  // ---- 5. Verify required handles exist ------------------------------------
   const requiredHandles = new Set<string>();
   for (const r of ROSTERS) for (const p of r.players) requiredHandles.add(p);
   requiredHandles.add(FA_DROP_HANDLE);
@@ -286,56 +359,13 @@ async function main(): Promise<void> {
   }
 
   if (missingHandles.length > 0) {
-    console.warn(
-      `[seed] ${missingHandles.length} expected handles missing from match walk:`,
+    console.error(
+      `[seed] FATAL: ${missingHandles.length} required handles missing from DB:`,
       missingHandles.join(', '),
     );
+    throw new Error('Cannot seed rosters — missing players');
   }
-
-  // Special handling for Less (KRÜ). If KRÜ team does not yet exist in the
-  // league from the match walk, synthesize it so we can still place Less on
-  // a real Player row on a real Team row.
-  if (missingHandles.includes(FA_DROP_HANDLE)) {
-    let kruTeam = await findTeamByNameOrTag(
-      league.id,
-      FA_DROP_TEAM_FALLBACK_NAME,
-      FA_DROP_TEAM_FALLBACK_TAG,
-    );
-    if (!kruTeam) {
-      kruTeam = await db.team.upsert({
-        where: {
-          leagueId_vlrTeamId: {
-            leagueId: league.id,
-            vlrTeamId: FA_DROP_TEAM_FALLBACK_NAME,
-          },
-        },
-        update: {},
-        create: {
-          leagueId: league.id,
-          vlrTeamId: FA_DROP_TEAM_FALLBACK_NAME,
-          name: FA_DROP_TEAM_FALLBACK_NAME,
-          shortCode: FA_DROP_TEAM_FALLBACK_TAG,
-        },
-      });
-      console.log(`[seed] synthesized team ${FA_DROP_TEAM_FALLBACK_NAME}`);
-    }
-    await db.player.upsert({
-      where: {
-        leagueId_vlrPlayerId: {
-          leagueId: league.id,
-          vlrPlayerId: FA_DROP_HANDLE,
-        },
-      },
-      update: { teamId: kruTeam.id, handle: FA_DROP_HANDLE },
-      create: {
-        leagueId: league.id,
-        vlrPlayerId: FA_DROP_HANDLE,
-        teamId: kruTeam.id,
-        handle: FA_DROP_HANDLE,
-      },
-    });
-    console.log(`[seed] synthesized player ${FA_DROP_HANDLE}`);
-  }
+  console.log(`[seed] all ${requiredHandles.size} required players verified`);
 
   // ---- 6. Upsert users + league memberships ------------------------------
   const userIdByUsername = new Map<string, string>();
