@@ -11,7 +11,7 @@ export default async function MyRosterPage({ params }: { params: Promise<{ slug:
   if (!data) return <p>League not found</p>;
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-slate-100">Your Roster</h1>
       <div className="grid gap-3">
         {data.slots.map((s) => (
@@ -27,6 +27,6 @@ export default async function MyRosterPage({ params }: { params: Promise<{ slug:
           </Card>
         ))}
       </div>
-    </main>
+    </div>
   );
 }

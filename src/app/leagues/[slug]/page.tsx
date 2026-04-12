@@ -3,7 +3,7 @@ import { getDashboard } from '@/server/queries/dashboard';
 import { LiveMatchHero } from '@/components/dashboard/LiveMatchHero';
 import { MyPlayersInMatch } from '@/components/dashboard/MyPlayersInMatch';
 import { CompressedStandings } from '@/components/dashboard/CompressedStandings';
-import { DashboardLiveClient } from '@/components/dashboard/DashboardLiveClient';
+
 
 export default async function DashboardPage({
   params,
@@ -60,8 +60,7 @@ export default async function DashboardPage({
   const meRow = data.leaderboard.find((r) => r.userId === session.user.id);
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
-      <DashboardLiveClient slug={slug} />
+    <div className="space-y-4">
       {heroProps ? (
         <LiveMatchHero {...heroProps} />
       ) : (
@@ -71,6 +70,6 @@ export default async function DashboardPage({
       )}
       <MyPlayersInMatch lines={lines} />
       <CompressedStandings rows={data.leaderboard.slice(0, 5)} meRank={meRow?.rank ?? null} />
-    </main>
+    </div>
   );
 }

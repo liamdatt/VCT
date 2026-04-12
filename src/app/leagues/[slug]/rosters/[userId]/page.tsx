@@ -13,7 +13,7 @@ export default async function OtherRosterPage({
   const user = await db.user.findUnique({ where: { id: userId } });
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-slate-100">{user?.username}&apos;s Roster</h1>
       <div className="grid gap-3">
         {data.slots.map((s) => (
@@ -28,6 +28,6 @@ export default async function OtherRosterPage({
           </Card>
         ))}
       </div>
-    </main>
+    </div>
   );
 }

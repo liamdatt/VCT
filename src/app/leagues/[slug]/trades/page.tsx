@@ -27,7 +27,7 @@ export default async function TradesPage({
   });
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-slate-100">Trades</h1>
       <div className="space-y-2">
         {trades.map((t) => (
@@ -46,6 +46,6 @@ export default async function TradesPage({
         ))}
         {trades.length === 0 && <p className="text-slate-400">No trades yet.</p>}
       </div>
-    </main>
+    </div>
   );
 }

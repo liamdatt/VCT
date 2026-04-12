@@ -6,7 +6,7 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ sl
   const rows = await getLeaderboard(slug);
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 p-6">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-slate-100">Leaderboard</h1>
       <Table>
         <TableHeader>
@@ -26,6 +26,6 @@ export default async function LeaderboardPage({ params }: { params: Promise<{ sl
           ))}
         </TableBody>
       </Table>
-    </main>
+    </div>
   );
 }

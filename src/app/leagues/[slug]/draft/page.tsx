@@ -28,7 +28,7 @@ export default async function DraftRoomPage({ params }: { params: Promise<{ slug
   const available = league.players.filter((p) => !takenIds.has(p.id));
 
   return (
-    <main className="mx-auto max-w-4xl space-y-4 p-6">
+    <div className="space-y-4">
       <h1 className="text-2xl font-bold text-slate-100">Draft Room</h1>
       <div className="rounded border border-slate-800 p-3 text-sm">
         Round {round} · Pick {idx + 1} —{' '}
@@ -67,6 +67,6 @@ export default async function DraftRoomPage({ params }: { params: Promise<{ slug
           ))}
         </ol>
       </div>
-    </main>
+    </div>
   );
 }
