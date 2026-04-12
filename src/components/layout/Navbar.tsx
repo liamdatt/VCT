@@ -67,19 +67,17 @@ export async function Navbar({
               {session.user.name}
             </div>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer"
-              render={<Link href="/leagues" />}
-            >
-              Switch League
-            </DropdownMenuItem>
-            {isCommissioner && (
-              <DropdownMenuItem
-                className="cursor-pointer"
-                render={<Link href={`/leagues/${leagueSlug}/admin`} />}
-              >
-                Admin
+            <Link href="/leagues">
+              <DropdownMenuItem className="cursor-pointer">
+                Switch League
               </DropdownMenuItem>
+            </Link>
+            {isCommissioner && (
+              <Link href={`/admin/leagues/${leagueSlug}`}>
+                <DropdownMenuItem className="cursor-pointer">
+                  Admin
+                </DropdownMenuItem>
+              </Link>
             )}
             <DropdownMenuSeparator />
             <form
@@ -88,8 +86,8 @@ export async function Navbar({
                 await signOut({ redirectTo: '/' });
               }}
             >
-              <DropdownMenuItem render={<button type="submit" className="w-full" />}>
-                Sign Out
+              <DropdownMenuItem className="cursor-pointer" nativeButton>
+                <button type="submit" className="w-full text-left">Sign Out</button>
               </DropdownMenuItem>
             </form>
           </DropdownMenuContent>
