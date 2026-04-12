@@ -28,11 +28,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   callbacks: {
     ...authConfig.callbacks,
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider !== 'discord' || !account.providerAccountId) return false;
       const snowflake = account.providerAccountId;
-      const username = user.name ?? 'unknown';
+      const displayName = user.name ?? 'unknown';
       const avatarUrl = user.image ?? null;
+      // Discord profile.username is the actual username (e.g. "liam4650"),
+      // while user.name is the display/global name (e.g. "Liam").
+      const discordUsername = (profile as { username?: string })?.username ?? displayName;
 
       // 1. Try to find by real snowflake first.
       let dbUser = await db.user.findFirst({
@@ -42,7 +45,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // 2. Otherwise try to find a seed row keyed by the discord username.
       if (!dbUser) {
         const byUsername = await db.user.findFirst({
-          where: { discordId: username },
+          where: { discordId: discordUsername },
         });
         if (byUsername) {
           // 3. Migrate the seed row to the real snowflake.
@@ -50,7 +53,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             where: { id: byUsername.id },
             data: {
               discordId: snowflake,
-              username,
+              username: displayName,
               avatarUrl,
             },
           });
@@ -59,7 +62,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Keep the existing row's profile fields fresh.
         dbUser = await db.user.update({
           where: { id: dbUser.id },
-          data: { username, avatarUrl },
+          data: { username: displayName, avatarUrl },
         });
       }
 
