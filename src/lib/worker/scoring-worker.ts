@@ -4,7 +4,7 @@ import { computeGamePoints } from '@/lib/scoring/rules';
 import type { LeagueSettings } from '@/lib/scoring/types';
 import { publishLeagueEvent } from '@/lib/publish';
 import { toInt, acesFromRounds } from '@/lib/vlrapi/parse';
-import type { VlrMatchDetailSegment } from '@/lib/vlrapi/types';
+import type { VlrMatchDetail } from '@/lib/vlrapi/types';
 import type { MatchStatus } from '@prisma/client';
 
 const POLL_INTERVAL_MS = 60_000;
@@ -113,7 +113,7 @@ async function processLeague(league: LeagueMini): Promise<void> {
 
 export async function ingestMatch(
   league: LeagueMini,
-  detail: VlrMatchDetailSegment,
+  detail: VlrMatchDetail,
 ): Promise<void> {
   const settings = league.settingsJson as unknown as LeagueSettings;
   const [teamA, teamB] = detail.teams;
@@ -176,11 +176,9 @@ export async function ingestMatch(
     const map = detail.maps[i];
     const mapNumber = i + 1;
 
-    const mapScore1 = toInt(map.score?.team1);
-    const mapScore2 = toInt(map.score?.team2);
-    const durationPresent = !!map.duration && map.duration.trim() !== '';
-    const isMapCompleted =
-      durationPresent && (mapScore1 > 0 || mapScore2 > 0);
+    const mapScore1 = map.team1_score;
+    const mapScore2 = map.team2_score;
+    const isMapCompleted = mapScore1 > 0 || mapScore2 > 0;
     if (!isMapCompleted) continue;
 
     // Skip if we already ingested this completed map.
