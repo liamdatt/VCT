@@ -386,6 +386,37 @@ async function main(): Promise<void> {
   // ---- 6. Upsert users + league memberships ------------------------------
   const userIdByUsername = new Map<string, string>();
   for (const u of SEED_USERS) {
+    // If the user previously logged in via Discord (auth migrated their
+    // discordId from username to snowflake), look them up by display name
+    // and reset their discordId back to the seed username so the seed is
+    // idempotent. Also delete any duplicate snowflake-based orphan user.
+    const existingByUsername = await db.user.findFirst({
+      where: { discordId: u.username },
+    });
+    if (!existingByUsername) {
+      // Might exist under their real snowflake — find by display name
+      const byName = await db.user.findFirst({
+        where: { username: u.name },
+      });
+      if (byName && byName.discordId !== u.username) {
+        // This is a migrated user — reset discordId to seed value
+        await db.user.update({
+          where: { id: byName.id },
+          data: { discordId: u.username, role: u.role as UserRole },
+        });
+      }
+    }
+    // Also clean up any OTHER users with the same display name (duplicates from auth)
+    const dupes = await db.user.findMany({
+      where: { username: u.name, discordId: { not: u.username } },
+    });
+    for (const dupe of dupes) {
+      await db.leagueMembership.deleteMany({ where: { userId: dupe.id } });
+      await db.scoringSnapshot.deleteMany({ where: { userId: dupe.id } });
+      await db.user.delete({ where: { id: dupe.id } });
+      console.log(`[seed] cleaned up duplicate user ${dupe.discordId} for ${u.name}`);
+    }
+
     const dbUser = await db.user.upsert({
       where: { discordId: u.username },
       update: {
