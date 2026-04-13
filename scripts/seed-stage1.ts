@@ -126,10 +126,9 @@ const EXPECTED_TOTALS: Record<string, number> = {
 // ---------------------------------------------------------------------------
 
 async function findPlayerByHandle(leagueId: string, handle: string) {
-  return db.player.findFirst({
+  return db.player.findUnique({
     where: {
-      leagueId,
-      handle: { equals: handle, mode: 'insensitive' },
+      leagueId_vlrPlayerId: { leagueId, vlrPlayerId: handle.toLowerCase() },
     },
   });
 }
@@ -322,16 +321,17 @@ async function main(): Promise<void> {
       console.warn(`[seed] team not found for ${p.handle} (${fullTeamName}) — skipping`);
       continue;
     }
+    const lowerHandle = p.handle.toLowerCase();
     await db.player.upsert({
       where: {
-        leagueId_vlrPlayerId: { leagueId: league.id, vlrPlayerId: p.handle },
+        leagueId_vlrPlayerId: { leagueId: league.id, vlrPlayerId: lowerHandle },
       },
-      update: { teamId: team.id, handle: p.handle },
+      update: { teamId: team.id, handle: lowerHandle },
       create: {
         leagueId: league.id,
-        vlrPlayerId: p.handle,
+        vlrPlayerId: lowerHandle,
         teamId: team.id,
-        handle: p.handle,
+        handle: lowerHandle,
       },
     });
   }

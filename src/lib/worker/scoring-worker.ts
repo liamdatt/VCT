@@ -224,15 +224,16 @@ export async function ingestMatch(
       const lines = map.players?.[teamKey] ?? [];
 
       for (const line of lines) {
-        const handle = line.name;
+        const handle = line.name?.toLowerCase();
         if (!handle) continue;
 
-        // Case-insensitive lookup — vlr.gg may return "Reduxx" while
-        // the seed has "reduxx". findFirst with mode insensitive handles this.
-        const player = await db.player.findFirst({
+        // All handles in the DB are normalized to lowercase.
+        const player = await db.player.findUnique({
           where: {
-            leagueId: league.id,
-            handle: { equals: handle, mode: 'insensitive' },
+            leagueId_vlrPlayerId: {
+              leagueId: league.id,
+              vlrPlayerId: handle,
+            },
           },
         });
         if (!player) {
