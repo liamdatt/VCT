@@ -1,7 +1,6 @@
 import { db } from '@/lib/db';
 import { vlrapi } from '@/lib/vlrapi/client';
-import { computeGamePoints } from '@/lib/scoring/rules';
-import type { LeagueSettings } from '@/lib/scoring/types';
+import { recomputeMatchSnapshots } from '@/lib/scoring/recompute';
 import { publishLeagueEvent } from '@/lib/publish';
 import { toInt, acesFromRounds } from '@/lib/vlrapi/parse';
 import type { VlrMatchDetail } from '@/lib/vlrapi/types';
@@ -115,7 +114,6 @@ export async function ingestMatch(
   league: LeagueMini,
   detail: VlrMatchDetail,
 ): Promise<void> {
-  const settings = league.settingsJson as unknown as LeagueSettings;
   const [teamA, teamB] = detail.teams;
   if (!teamA || !teamB) return;
 
@@ -171,6 +169,29 @@ export async function ingestMatch(
       finalScore,
     },
   });
+
+  // Populate MatchRoster from the CURRENT RosterSlot state the first time we
+  // see this match. After this, MatchRoster is the authoritative per-match
+  // ownership snapshot — subsequent edits (commissioner UI) mutate it
+  // directly and `recomputeMatchSnapshots` regenerates scoring from it.
+  const existingMatchRoster = await db.matchRoster.count({
+    where: { matchId: match.id },
+  });
+  if (existingMatchRoster === 0) {
+    const currentSlots = await db.rosterSlot.findMany({
+      where: { leagueId: league.id },
+    });
+    for (const slot of currentSlots) {
+      await db.matchRoster.create({
+        data: {
+          matchId: match.id,
+          userId: slot.userId,
+          playerId: slot.playerId,
+          isCaptain: slot.isCaptain,
+        },
+      });
+    }
+  }
 
   for (let i = 0; i < detail.maps.length; i++) {
     const map = detail.maps[i];
@@ -269,43 +290,13 @@ export async function ingestMatch(
           },
         });
 
-        const slot = await db.rosterSlot.findUnique({
-          where: {
-            leagueId_playerId: {
-              leagueId: league.id,
-              playerId: player.id,
-            },
-          },
+        // Track affected users via MatchRoster (authoritative per-match
+        // ownership). If nobody owned this player for this match, skip.
+        const ownership = await db.matchRoster.findFirst({
+          where: { matchId: match.id, playerId: player.id },
+          select: { userId: true },
         });
-        if (!slot) continue;
-
-        const breakdown = computeGamePoints(
-          { kills, deaths, assists, aces, won },
-          settings,
-        );
-        await db.scoringSnapshot.upsert({
-          where: {
-            leagueId_userId_playerId_gameId: {
-              leagueId: league.id,
-              userId: slot.userId,
-              playerId: player.id,
-              gameId: game.id,
-            },
-          },
-          update: {
-            total: breakdown.total,
-            breakdownJson: breakdown as unknown as object,
-          },
-          create: {
-            leagueId: league.id,
-            userId: slot.userId,
-            playerId: player.id,
-            gameId: game.id,
-            total: breakdown.total,
-            breakdownJson: breakdown as unknown as object,
-          },
-        });
-        affectedUserIds.add(slot.userId);
+        if (ownership) affectedUserIds.add(ownership.userId);
       }
     }
 
@@ -327,6 +318,10 @@ export async function ingestMatch(
       },
     );
   }
+
+  // Recompute all ScoringSnapshot rows for this match from MatchRoster. This
+  // is idempotent and handles late-arriving maps / re-ingests cleanly.
+  await recomputeMatchSnapshots(match.id);
 }
 
 /**

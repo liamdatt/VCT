@@ -16,6 +16,7 @@ import 'dotenv/config';
 import { db } from '../src/lib/db';
 import { vlrapi } from '../src/lib/vlrapi/client';
 import { ingestMatchExternal } from '../src/lib/worker/scoring-worker';
+import { recomputeMatchSnapshots } from '../src/lib/scoring/recompute';
 import { DEFAULT_LEAGUE_SETTINGS } from '../src/lib/scoring/types';
 import { aggregateUserTotal } from '../src/lib/scoring/aggregate';
 import type { AcquiredVia, UserRole } from '@prisma/client';
@@ -66,26 +67,28 @@ type SeedRoster = {
 // NOTE: Liam's roster below is the POST-drop state. Less is added manually
 // before ingest and removed after. okeanos is Liam's 5th slot in the end
 // state.
+// FINAL Week 1 rosters (after all 10 FA moves).
+// Captain is the bold player from the updated spreadsheet.
 const ROSTERS: SeedRoster[] = [
   {
     manager: 'liam4650',
     captain: 'skuba',
-    players: ['skuba', 'Verno', 'leaf', 'Keznit', 'okeanos'],
+    players: ['skuba', 'Verno', 'leaf', 'Keznit', 'Less'],
   },
   {
     manager: 'monsieurtrance',
-    captain: 'Timotino',
-    players: ['Timotino', 'zekken', 'koalanoob', 'Rossy', 'babybay'],
+    captain: 'koalanoob',
+    players: ['Timotino', 'zekken', 'koalanoob', 'Rossy', 'alym'],
   },
   {
     manager: 'brianscarlett',
     captain: 'brawk',
-    players: ['brawk', 'Asuna', 'aspas', 'Eggsterr', 'johnqt'],
+    players: ['brawk', 'Asuna', 'aspas', 'Eggsterr', 'Sato'],
   },
   {
     manager: 'twigsen',
-    captain: 'Bang',
-    players: ['Bang', 'Xeppaa', 'Mazino', 'reduxx', 'eeiu'],
+    captain: 'Xeppaa',
+    players: ['Bang', 'Xeppaa', 'Mazino', 'nerve', 'eeiu'],
   },
   {
     manager: 'unknownkingston',
@@ -95,30 +98,38 @@ const ROSTERS: SeedRoster[] = [
   {
     manager: 'vanruel',
     captain: 'mada',
-    players: ['mada', 'Vora', 'jawgemo', 'penny', 'P0PPIN'],
+    players: ['mada', 'Vora', 'dgzin', 'penny', 'P0PPIN'],
   },
   {
     manager: 'juschen',
-    captain: 'Demon1',
-    players: ['Demon1', 'keiko', 'dgzin', 'OXY', 'Cryocells'],
+    captain: 'keiko',
+    players: ['Demon1', 'keiko', 'babybay', 'OXY', 'Cryocells'],
   },
 ];
 
-// The historical FA move: Liam dropped Less (KRÜ) and picked up okeanos (EG).
-const FA_DROP_HANDLE = 'Less';
-const FA_PICKUP_HANDLE = 'okeanos';
-// Fallback team info for Less if KRÜ has not appeared in any ingested match.
-const FA_DROP_TEAM_FALLBACK_NAME = 'KRÜ Esports';
-const FA_DROP_TEAM_FALLBACK_TAG = 'KRÜ';
+// All 10 FA moves during Week 1, in chronological order.
+// Each move: manager drops player A, picks up player B.
+const FA_MOVES: Array<{ manager: string; drop: string; pickup: string }> = [
+  { manager: 'liam4650', drop: 'Less', pickup: 'okeanos' },
+  { manager: 'monsieurtrance', drop: 'babybay', pickup: 'Zellsis' },
+  { manager: 'vanruel', drop: 'jawgemo', pickup: 'lukxo' },
+  { manager: 'juschen', drop: 'dgzin', pickup: 'Neon' },
+  { manager: 'brianscarlett', drop: 'johnqt', pickup: 'Sato' },
+  { manager: 'vanruel', drop: 'lukxo', pickup: 'dgzin' },
+  { manager: 'juschen', drop: 'Neon', pickup: 'babybay' },
+  { manager: 'liam4650', drop: 'okeanos', pickup: 'Less' },
+  { manager: 'twigsen', drop: 'reduxx', pickup: 'nerve' },
+  { manager: 'monsieurtrance', drop: 'Zellsis', pickup: 'alym' },
+];
 
 const EXPECTED_TOTALS: Record<string, number> = {
-  liam4650: 228.5,
-  monsieurtrance: 156.0,
-  brianscarlett: 147.0,
-  twigsen: 131.0,
-  unknownkingston: 107.5,
-  vanruel: 35.5,
-  juschen: 0,
+  liam4650: 322.25,
+  monsieurtrance: 461.75,
+  brianscarlett: 414.25,
+  twigsen: 380.5,
+  unknownkingston: 240.5,
+  vanruel: 378.25,
+  juschen: 443.25,
 };
 
 // ---------------------------------------------------------------------------
@@ -365,8 +376,7 @@ async function main(): Promise<void> {
   // ---- 5. Verify required handles exist ------------------------------------
   const requiredHandles = new Set<string>();
   for (const r of ROSTERS) for (const p of r.players) requiredHandles.add(p);
-  requiredHandles.add(FA_DROP_HANDLE);
-  requiredHandles.add(FA_PICKUP_HANDLE);
+  for (const m of FA_MOVES) { requiredHandles.add(m.drop); requiredHandles.add(m.pickup); }
 
   const missingHandles: string[] = [];
   for (const handle of requiredHandles) {
@@ -442,57 +452,66 @@ async function main(): Promise<void> {
   }
   console.log(`[seed] upserted ${SEED_USERS.length} users + memberships`);
 
-  // ---- 7. Seed rosters (pre-ingest state: Liam has Less, NOT okeanos) ----
-  // For idempotency, wipe existing roster slots for each manager in this
-  // league at this league and re-seed. Safer: we only clear if the current
-  // state does not exactly match target.
-  //
-  // Simpler and still idempotent: compute target slots and upsert via
-  // leagueId+playerId; if an existing slot on a different user exists we
-  // log a warning. We cannot simply delete all because we may be running
-  // after a partial success — but deleting and recreating roster slots
-  // inside the single-league bootstrap is safe (snapshots carry their own
-  // userId column and are attributed at ingest time).
-
-  // Clear ALL roster slots + captain changes for this league (not just seed
-  // users) so re-runs don't hit unique constraint violations. Safe because
-  // this is a one-time bootstrap and we're about to re-create everything.
+  // ---- 7. Clear all prior state -----------------------------------------
+  await db.scoringAdjustment.deleteMany({ where: { leagueId: league.id } });
   await db.rosterSlot.deleteMany({ where: { leagueId: league.id } });
   await db.captainChange.deleteMany({ where: { leagueId: league.id } });
-  // Also clear scoring snapshots + free agency actions from prior partial runs
   await db.scoringSnapshot.deleteMany({ where: { leagueId: league.id } });
   await db.freeAgencyAction.deleteMany({ where: { leagueId: league.id } });
+  await db.ingestError.deleteMany({ where: { leagueId: league.id } });
   await db.playerGameStat.deleteMany({
     where: { game: { match: { leagueId: league.id } } },
   });
   await db.game.deleteMany({ where: { match: { leagueId: league.id } } });
   await db.match.deleteMany({ where: { leagueId: league.id } });
-  console.log('[seed] cleared prior roster/match/scoring state');
+  console.log('[seed] cleared prior state');
 
-  // Pre-ingest Liam roster: swap okeanos → Less.
-  const preIngestRosters = ROSTERS.map((r) => {
-    if (r.manager !== 'liam4650') return r;
-    const swapped = r.players.map((p) =>
-      p === FA_PICKUP_HANDLE ? FA_DROP_HANDLE : p,
+  // ---- 8. Seed ORIGINAL rosters (before any FA moves) ------------------
+  // We compute the original roster by reverse-applying FA_MOVES to the
+  // final ROSTERS. Process moves in reverse: undo each drop/pickup.
+  type MutableRoster = { manager: string; captain: string; players: string[] };
+  const originalRosters: MutableRoster[] = ROSTERS.map((r) => ({
+    ...r,
+    players: [...r.players],
+  }));
+
+  // Reverse FA moves to reconstruct original rosters
+  for (let i = FA_MOVES.length - 1; i >= 0; i--) {
+    const move = FA_MOVES[i];
+    const roster = originalRosters.find((r) => r.manager === move.manager);
+    if (!roster) continue;
+    // Undo: replace pickup with drop (reverse the move)
+    const idx = roster.players.findIndex(
+      (p) => p.toLowerCase() === move.pickup.toLowerCase(),
     );
-    return { ...r, players: swapped };
-  });
+    if (idx >= 0) {
+      roster.players[idx] = move.drop;
+    }
+  }
 
-  for (const roster of preIngestRosters) {
+  // Use original captains (before any captain changes)
+  const ORIGINAL_CAPTAINS: Record<string, string> = {
+    liam4650: 'skuba',
+    monsieurtrance: 'Timotino',
+    brianscarlett: 'brawk',
+    twigsen: 'Bang',
+    unknownkingston: 'trent',
+    vanruel: 'mada',
+    juschen: 'Demon1',
+  };
+
+  for (const roster of originalRosters) {
     const userId = userIdByUsername.get(roster.manager);
     if (!userId) throw new Error(`missing user for ${roster.manager}`);
-
-    let captainPlayerId: string | null = null;
+    const origCaptain = ORIGINAL_CAPTAINS[roster.manager] ?? roster.captain;
 
     for (const handle of roster.players) {
       const player = await findPlayerByHandle(league.id, handle);
       if (!player) {
-        console.warn(
-          `[seed] WARNING: player "${handle}" for manager ${roster.manager} not found — skipping slot`,
-        );
+        console.warn(`[seed] WARNING: player "${handle}" for ${roster.manager} not found`);
         continue;
       }
-      const isCaptain = handle === roster.captain;
+      const isCaptain = handle.toLowerCase() === origCaptain.toLowerCase();
       await db.rosterSlot.create({
         data: {
           userId,
@@ -502,28 +521,24 @@ async function main(): Promise<void> {
           acquiredVia: 'SEED' satisfies AcquiredVia as AcquiredVia,
         },
       });
-      if (isCaptain) captainPlayerId = player.id;
     }
 
-    if (captainPlayerId) {
+    const captainPlayer = await findPlayerByHandle(league.id, origCaptain);
+    if (captainPlayer) {
       await db.captainChange.create({
         data: {
           userId,
           leagueId: league.id,
           oldPlayerId: null,
-          newPlayerId: captainPlayerId,
+          newPlayerId: captainPlayer.id,
           changedAt: LEAGUE_START,
         },
       });
-    } else {
-      console.warn(
-        `[seed] WARNING: no captain resolved for ${roster.manager} — skipping CaptainChange`,
-      );
     }
   }
-  console.log('[seed] pre-ingest rosters + captain changes created');
+  console.log('[seed] original rosters created (pre-FA)');
 
-  // ---- 8. Ingest historical matches --------------------------------------
+  // ---- 9. Ingest all completed matches ----------------------------------
   console.log(`[seed] ingesting ${completedMatchIds.length} completed matches`);
   for (const mid of completedMatchIds) {
     try {
@@ -534,68 +549,114 @@ async function main(): Promise<void> {
   }
   console.log('[seed] historical ingest complete');
 
-  // ---- 9. Execute the FA drop/pickup -------------------------------------
-  const liamUserId = userIdByUsername.get('liam4650');
-  if (!liamUserId) throw new Error('Liam user missing');
+  // ---- 10. Apply all FA moves (roster swaps, no snapshot changes) ------
+  for (const move of FA_MOVES) {
+    const userId = userIdByUsername.get(move.manager);
+    if (!userId) continue;
+    const dropPlayer = await findPlayerByHandle(league.id, move.drop);
+    const pickupPlayer = await findPlayerByHandle(league.id, move.pickup);
+    if (!dropPlayer || !pickupPlayer) {
+      console.warn(`[seed] FA skip: ${move.drop} → ${move.pickup} (player not found)`);
+      continue;
+    }
 
-  const lessPlayer = await findPlayerByHandle(league.id, FA_DROP_HANDLE);
-  const okeanosPlayer = await findPlayerByHandle(league.id, FA_PICKUP_HANDLE);
-
-  if (!lessPlayer) {
-    console.warn('[seed] cannot execute FA: Less player not found');
-  } else if (!okeanosPlayer) {
-    console.warn('[seed] cannot execute FA: okeanos player not found');
-  } else {
-    // Drop Less (remove from Liam's roster).
+    // Remove dropped player from roster
     await db.rosterSlot.deleteMany({
-      where: {
-        leagueId: league.id,
-        userId: liamUserId,
-        playerId: lessPlayer.id,
-      },
+      where: { leagueId: league.id, userId, playerId: dropPlayer.id },
     });
-
-    // Add okeanos (create new roster slot) if not already present.
-    const existingOk = await db.rosterSlot.findUnique({
-      where: {
-        leagueId_playerId: { leagueId: league.id, playerId: okeanosPlayer.id },
-      },
+    // Add picked up player (if not already owned by someone)
+    const existingSlot = await db.rosterSlot.findUnique({
+      where: { leagueId_playerId: { leagueId: league.id, playerId: pickupPlayer.id } },
     });
-    if (!existingOk) {
+    if (!existingSlot) {
       await db.rosterSlot.create({
         data: {
-          userId: liamUserId,
+          userId,
           leagueId: league.id,
-          playerId: okeanosPlayer.id,
+          playerId: pickupPlayer.id,
           isCaptain: false,
           acquiredVia: 'FREE_AGENCY' satisfies AcquiredVia as AcquiredVia,
-          acquiredAt: FA_TIMESTAMP,
         },
       });
     }
-
-    // Record FreeAgencyAction if not already recorded.
-    const existingFa = await db.freeAgencyAction.findFirst({
-      where: {
+    // Record FA action
+    await db.freeAgencyAction.create({
+      data: {
         leagueId: league.id,
-        userId: liamUserId,
-        droppedPlayerId: lessPlayer.id,
-        pickedUpPlayerId: okeanosPlayer.id,
+        userId,
+        droppedPlayerId: dropPlayer.id,
+        pickedUpPlayerId: pickupPlayer.id,
       },
     });
-    if (!existingFa) {
-      await db.freeAgencyAction.create({
+  }
+  console.log(`[seed] applied ${FA_MOVES.length} FA moves`);
+
+  // ---- 11. Apply final captain changes ---------------------------------
+  for (const roster of ROSTERS) {
+    const userId = userIdByUsername.get(roster.manager);
+    if (!userId) continue;
+    const origCaptain = ORIGINAL_CAPTAINS[roster.manager];
+    if (origCaptain?.toLowerCase() === roster.captain.toLowerCase()) continue; // no change
+
+    const newCaptainPlayer = await findPlayerByHandle(league.id, roster.captain);
+    if (!newCaptainPlayer) continue;
+
+    // Clear old captain flag
+    await db.rosterSlot.updateMany({
+      where: { leagueId: league.id, userId, isCaptain: true },
+      data: { isCaptain: false },
+    });
+    // Set new captain
+    await db.rosterSlot.updateMany({
+      where: { leagueId: league.id, userId, playerId: newCaptainPlayer.id },
+      data: { isCaptain: true },
+    });
+    // Record captain change
+    await db.captainChange.create({
+      data: {
+        userId,
+        leagueId: league.id,
+        oldPlayerId: null,
+        newPlayerId: newCaptainPlayer.id,
+      },
+    });
+    console.log(`[seed] captain change: ${roster.manager} → ${roster.captain}`);
+  }
+
+  // ---- 12. Populate MatchRoster from final roster state ------------------
+  // Phase 1: use the final-state roster for every match. Phase 2's UI lets
+  // the commissioner correct per-match ownership retroactively.
+  const allMatches = await db.match.findMany({
+    where: { leagueId: league.id, status: 'COMPLETED' },
+    select: { id: true },
+  });
+  const finalRosters = await db.rosterSlot.findMany({
+    where: { leagueId: league.id },
+  });
+
+  await db.matchRoster.deleteMany({
+    where: { match: { leagueId: league.id } },
+  });
+
+  for (const match of allMatches) {
+    for (const slot of finalRosters) {
+      await db.matchRoster.create({
         data: {
-          leagueId: league.id,
-          userId: liamUserId,
-          droppedPlayerId: lessPlayer.id,
-          pickedUpPlayerId: okeanosPlayer.id,
-          happenedAt: FA_TIMESTAMP,
+          matchId: match.id,
+          userId: slot.userId,
+          playerId: slot.playerId,
+          isCaptain: slot.isCaptain,
         },
       });
     }
-    console.log('[seed] FA drop/pickup executed (Less → okeanos)');
   }
+  console.log(`[seed] populated MatchRoster for ${allMatches.length} matches`);
+
+  // ---- 13. Recompute all match snapshots from MatchRoster ---------------
+  for (const match of allMatches) {
+    await recomputeMatchSnapshots(match.id);
+  }
+  console.log('[seed] recomputed all snapshots from MatchRoster');
 
   // ---- 10. Validate totals -----------------------------------------------
   if (completedMatchIds.length === 0) {
