@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { computeGamePoints } from '@/lib/scoring/rules';
 import { DEFAULT_LEAGUE_SETTINGS } from '@/lib/scoring/types';
 import type { LeagueSettings } from '@/lib/scoring/types';
+import { MatchRosterEditor } from '@/components/admin/MatchRosterEditor';
 
 export default async function AuditPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -42,7 +43,34 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
     include: { player: true, game: true },
   });
 
+  const allLeaguePlayers = await db.player.findMany({
+    where: { leagueId: league.id },
+    include: { team: true },
+    orderBy: [{ team: { shortCode: 'asc' } }, { handle: 'asc' }],
+  });
+
+  const editorPlayers = allLeaguePlayers.map((p) => ({
+    id: p.id,
+    handle: p.handle,
+    teamName: p.team.shortCode,
+  }));
+
+  const matchRosters = await db.matchRoster.findMany({
+    where: { match: { leagueId: league.id } },
+    select: { matchId: true, userId: true, playerId: true, isCaptain: true },
+  });
+
+  const matchRosterByMatch = new Map<string, typeof matchRosters>();
+  for (const mr of matchRosters) {
+    if (!matchRosterByMatch.has(mr.matchId)) matchRosterByMatch.set(mr.matchId, []);
+    matchRosterByMatch.get(mr.matchId)!.push(mr);
+  }
+
   const managers = league.memberships;
+  const editorManagers = managers.map((m) => ({
+    userId: m.userId,
+    username: m.user.username,
+  }));
 
   // Build lookup maps
   const playerOwnerMap = new Map<string, { userId: string; username: string; isCaptain: boolean }>();
@@ -495,6 +523,35 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
               </div>
             )}
           </div>
+
+          {/* Interactive roster editor */}
+          {(() => {
+            const rows = matchRosterByMatch.get(match.id) ?? [];
+            const byUser = new Map<string, { playerIds: string[]; captainPlayerId: string }>();
+            for (const r of rows) {
+              let entry = byUser.get(r.userId);
+              if (!entry) {
+                entry = { playerIds: [], captainPlayerId: '' };
+                byUser.set(r.userId, entry);
+              }
+              entry.playerIds.push(r.playerId);
+              if (r.isCaptain) entry.captainPlayerId = r.playerId;
+            }
+            const initialRosters = Array.from(byUser.entries()).map(([userId, v]) => ({
+              userId,
+              playerIds: v.playerIds,
+              captainPlayerId: v.captainPlayerId,
+            }));
+            return (
+              <MatchRosterEditor
+                matchId={match.id}
+                leagueSlug={slug}
+                managers={editorManagers}
+                initialRosters={initialRosters}
+                allPlayers={editorPlayers}
+              />
+            );
+          })()}
         </div>
       ))}
 
