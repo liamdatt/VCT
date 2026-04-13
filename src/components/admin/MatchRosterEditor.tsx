@@ -200,7 +200,7 @@ export function MatchRosterEditor({
                     <div key={slotIdx} className="flex items-center gap-1.5">
                       <input
                         type="radio"
-                        name={`captain-${r.userId}`}
+                        name={`captain-${matchId}-${r.userId}`}
                         checked={!!isCaptain}
                         disabled={!pid}
                         onChange={() => setCaptain(managerIdx, pid)}
