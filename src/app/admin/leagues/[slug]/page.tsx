@@ -14,7 +14,15 @@ export default async function AdminLeaguePage({ params }: { params: Promise<{ sl
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-6">
-      <h1 className="text-2xl font-bold text-slate-100">{league.name}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-100">{league.name}</h1>
+        <a
+          href={`/admin/leagues/${slug}/audit`}
+          className="rounded border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+        >
+          Audit Trail
+        </a>
+      </div>
       <section>
         <h2 className="mb-2 text-lg font-semibold text-slate-100">Adjust Points</h2>
         <form
