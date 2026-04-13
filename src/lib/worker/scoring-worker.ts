@@ -227,12 +227,12 @@ export async function ingestMatch(
         const handle = line.name;
         if (!handle) continue;
 
-        const player = await db.player.findUnique({
+        // Case-insensitive lookup — vlr.gg may return "Reduxx" while
+        // the seed has "reduxx". findFirst with mode insensitive handles this.
+        const player = await db.player.findFirst({
           where: {
-            leagueId_vlrPlayerId: {
-              leagueId: league.id,
-              vlrPlayerId: handle,
-            },
+            leagueId: league.id,
+            handle: { equals: handle, mode: 'insensitive' },
           },
         });
         if (!player) {

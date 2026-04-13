@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { computeGamePoints } from '@/lib/scoring/rules';
+import { DEFAULT_LEAGUE_SETTINGS } from '@/lib/scoring/types';
 
 export async function getPlayerPool(leagueSlug: string) {
   const league = await db.league.findUnique({ where: { slug: leagueSlug } });
@@ -12,23 +14,31 @@ export async function getPlayerPool(leagueSlug: string) {
         where: { leagueId: league.id },
         include: { user: true },
       },
-      snapshots: {
-        where: { leagueId: league.id },
-        select: { total: true },
-      },
       stats: {
-        select: { kills: true, deaths: true, assists: true },
+        include: { game: true },
       },
     },
   });
 
+  const settings = (league.settingsJson as unknown as typeof DEFAULT_LEAGUE_SETTINGS) ?? DEFAULT_LEAGUE_SETTINGS;
+
   const result = players.map((p) => {
     const owner = p.rosterSlots[0] ?? null;
-    const totalPoints = p.snapshots.reduce((sum, s) => sum + s.total, 0);
-    const totalKills = p.stats.reduce((sum, s) => sum + s.kills, 0);
-    const totalDeaths = p.stats.reduce((sum, s) => sum + s.deaths, 0);
-    const totalAssists = p.stats.reduce((sum, s) => sum + s.assists, 0);
-    const mapsPlayed = p.stats.length;
+    let totalPoints = 0;
+    let totalKills = 0;
+    let totalDeaths = 0;
+    let totalAssists = 0;
+
+    for (const s of p.stats) {
+      totalKills += s.kills;
+      totalDeaths += s.deaths;
+      totalAssists += s.assists;
+      const breakdown = computeGamePoints(
+        { kills: s.kills, deaths: s.deaths, assists: s.assists, aces: s.aces, won: s.won },
+        settings,
+      );
+      totalPoints += breakdown.total;
+    }
 
     return {
       id: p.id,
@@ -41,7 +51,7 @@ export async function getPlayerPool(leagueSlug: string) {
       totalKills,
       totalDeaths,
       totalAssists,
-      mapsPlayed,
+      mapsPlayed: p.stats.length,
     };
   });
 
