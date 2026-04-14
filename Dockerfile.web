@@ -22,12 +22,11 @@ COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 # Prisma 7 config file — datasource.url lives here, not in schema.prisma.
 COPY --from=build --chown=nextjs:nodejs /app/prisma.config.js ./prisma.config.js
-# Prisma client + engines + adapters.
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
-# Prisma CLI so `prisma migrate deploy` can run at container start.
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
-COPY --from=build --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
+# Full node_modules. Standalone output doesn't include Prisma CLI's transitive
+# config-loader deps (c12, jiti, deepmerge-ts, etc.) — without them the CLI
+# silently fails to load prisma.config.js and falls back to schema-only, which
+# errors because Prisma 7 removed `url` from the schema datasource block.
+COPY --from=build --chown=nextjs:nodejs /app/node_modules ./node_modules
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
