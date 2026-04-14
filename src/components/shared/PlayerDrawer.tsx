@@ -8,16 +8,9 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { PointsDelta } from './PointsDelta';
+import { Badge } from '@/components/shared/Badge';
+import { Skeleton } from '@/components/shared/Skeleton';
+import { DataTable, THead, Th, TBody, Tr, Td } from '@/components/shared/DataTable';
 
 type PlayerDrawerProps = {
   playerId: string | null;
@@ -74,85 +67,81 @@ export function PlayerDrawer({ playerId, open, onClose }: PlayerDrawerProps) {
         if (!isOpen) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent
+        side="right"
+        className="w-[520px] border-l border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-6 overflow-y-auto"
+      >
         {loading && (
-          <div className="flex h-40 items-center justify-center">
-            <span className="text-sm text-[--muted-foreground]">Loading...</span>
+          <div className="space-y-3 py-6">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-32" />
           </div>
         )}
 
         {!loading && data && (
           <>
             <SheetHeader>
-              <SheetTitle className="text-lg text-[--foreground]">
+              <SheetTitle className="font-display text-[20px] font-medium text-[var(--text-primary)]">
                 {data.handle}
               </SheetTitle>
               <SheetDescription className="flex items-center gap-2">
-                <span className="text-[--muted-foreground]">{data.teamName}</span>
-                {data.ownerUsername ? (
-                  <Badge variant="outline" className="text-xs">
-                    {data.ownerUsername}
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-xs text-[--chart-2]"
-                  >
-                    Free Agent
-                  </Badge>
-                )}
+                <span className="text-[var(--text-tertiary)]">{data.teamName}</span>
+                <Badge variant={data.ownerUsername ? 'neutral' : 'win'}>
+                  {data.ownerUsername ?? 'Free Agent'}
+                </Badge>
               </SheetDescription>
             </SheetHeader>
 
-            <div className="px-4">
-              <div className="mb-4 text-center">
-                <span className="font-mono text-3xl font-bold text-[--foreground]">
-                  {data.totalPoints.toFixed(1)}
-                </span>
-                <span className="ml-1 text-sm text-[--muted-foreground]">pts</span>
+            <div className="mt-6 space-y-1">
+              <div className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                Total Fantasy Points
               </div>
+              <div className="font-mono text-[40px] font-semibold tabular-nums text-[var(--text-primary)]">
+                {data.totalPoints.toFixed(1)}
+              </div>
+            </div>
 
+            <div className="mt-6">
               {data.games.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Map</TableHead>
-                      <TableHead className="text-right">K</TableHead>
-                      <TableHead className="text-right">D</TableHead>
-                      <TableHead className="text-right">A</TableHead>
-                      <TableHead className="text-right">Pts</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                <DataTable>
+                  <THead>
+                    <tr>
+                      <Th>Map</Th>
+                      <Th className="text-right">K</Th>
+                      <Th className="text-right">D</Th>
+                      <Th className="text-right">A</Th>
+                      <Th className="text-right">Pts</Th>
+                    </tr>
+                  </THead>
+                  <TBody>
                     {data.games.map((g, i) => (
-                      <TableRow
-                        key={i}
-                        className={g.won ? 'bg-[--chart-2]/5' : ''}
-                      >
-                        <TableCell className="text-xs">
-                          {g.mapName}
-                          <span className="ml-1 text-[10px] text-[--muted-foreground]">
-                            {g.date}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
+                      <Tr key={i} className={g.won ? 'bg-emerald-500/[0.04]' : ''}>
+                        <Td>
+                          <div className="flex flex-col">
+                            <span className="text-[13px]">{g.mapName}</span>
+                            <span className="text-[10px] text-[var(--text-tertiary)]">
+                              {g.date}
+                            </span>
+                          </div>
+                        </Td>
+                        <Td numeric className="text-right">
                           {g.kills}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
+                        </Td>
+                        <Td numeric className="text-right">
                           {g.deaths}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
+                        </Td>
+                        <Td numeric className="text-right">
                           {g.assists}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <PointsDelta value={g.fantasyPts} />
-                        </TableCell>
-                      </TableRow>
+                        </Td>
+                        <Td numeric className="text-right">
+                          {g.fantasyPts.toFixed(1)}
+                        </Td>
+                      </Tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </TBody>
+                </DataTable>
               ) : (
-                <p className="text-center text-sm text-[--muted-foreground]">
+                <p className="text-center text-[13px] text-[var(--text-tertiary)]">
                   No games played yet.
                 </p>
               )}
@@ -162,7 +151,7 @@ export function PlayerDrawer({ playerId, open, onClose }: PlayerDrawerProps) {
 
         {!loading && !data && open && (
           <div className="flex h-40 items-center justify-center">
-            <span className="text-sm text-[--muted-foreground]">
+            <span className="text-[13px] text-[var(--text-tertiary)]">
               Player not found.
             </span>
           </div>

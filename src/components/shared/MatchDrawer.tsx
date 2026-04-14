@@ -8,17 +8,9 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Star } from 'lucide-react';
-import { PointsDelta } from './PointsDelta';
+import { Badge } from '@/components/shared/Badge';
+import { Skeleton } from '@/components/shared/Skeleton';
+import { DataTable, THead, Th, TBody, Tr, Td } from '@/components/shared/DataTable';
 
 type MatchDrawerProps = {
   matchId: string | null;
@@ -87,103 +79,100 @@ export function MatchDrawer({ matchId, open, onClose }: MatchDrawerProps) {
         if (!isOpen) onClose();
       }}
     >
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+      <SheetContent
+        side="right"
+        className="w-[520px] border-l border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-6 overflow-y-auto"
+      >
         {loading && (
-          <div className="flex h-40 items-center justify-center">
-            <span className="text-sm text-[--muted-foreground]">Loading...</span>
+          <div className="space-y-3 py-6">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-32" />
           </div>
         )}
 
         {!loading && data && (
           <>
             <SheetHeader>
-              <SheetTitle className="text-lg text-[--foreground]">
+              <SheetTitle className="font-display text-[20px] font-medium text-[var(--text-primary)]">
                 {data.team1Name} vs {data.team2Name}
               </SheetTitle>
               <SheetDescription className="flex items-center gap-2">
-                <span className="font-mono text-xl font-bold text-[--foreground]">
-                  {data.team1Score} - {data.team2Score}
+                <span className="font-mono text-[20px] font-semibold tabular-nums text-[var(--text-primary)]">
+                  {data.team1Score}–{data.team2Score}
                 </span>
                 {data.status === 'LIVE' ? (
-                  <Badge variant="destructive" className="animate-pulse">
-                    LIVE
-                  </Badge>
+                  <Badge variant="live">LIVE</Badge>
                 ) : (
-                  <Badge variant="outline">{data.status}</Badge>
+                  <Badge variant="neutral">{data.status}</Badge>
                 )}
               </SheetDescription>
             </SheetHeader>
 
-            <div className="space-y-6 px-4 pb-4">
+            <div className="pb-4">
               {data.maps.map((map, mi) => (
-                <div key={mi}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-[--foreground]">
+                <div
+                  key={mi}
+                  className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 mt-4"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="font-display text-[16px] font-medium text-[var(--text-primary)]">
                       {map.mapName}
-                    </span>
-                    <span className="font-mono text-sm text-[--muted-foreground]">
-                      {map.team1Score} - {map.team2Score}
+                    </h3>
+                    <span className="font-mono text-[14px] font-semibold tabular-nums text-[var(--text-secondary)]">
+                      {map.team1Score}–{map.team2Score}
                     </span>
                   </div>
 
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Player</TableHead>
-                        <TableHead className="text-right">K</TableHead>
-                        <TableHead className="text-right">D</TableHead>
-                        <TableHead className="text-right">A</TableHead>
-                        <TableHead className="text-right">Pts</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <DataTable>
+                    <THead>
+                      <tr>
+                        <Th>Player</Th>
+                        <Th className="text-right">K</Th>
+                        <Th className="text-right">D</Th>
+                        <Th className="text-right">A</Th>
+                        <Th className="text-right">Pts</Th>
+                      </tr>
+                    </THead>
+                    <TBody>
                       {map.players.map((p, pi) => (
-                        <TableRow
-                          key={pi}
-                          className={p.won ? 'bg-[--chart-2]/5' : ''}
-                        >
-                          <TableCell>
+                        <Tr key={pi} className={p.won ? 'bg-emerald-500/[0.04]' : ''}>
+                          <Td>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium text-[--foreground]">
+                              <span className="text-[13px] font-medium text-[var(--text-primary)]">
                                 {p.name}
                               </span>
-                              <span className="text-[10px] text-[--muted-foreground]">
+                              <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
                                 {p.team}
                               </span>
                               {p.ownerUsername && (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px]"
-                                >
-                                  {p.ownerUsername}
-                                </Badge>
+                                <Badge variant="neutral">{p.ownerUsername}</Badge>
                               )}
                               {p.isCaptain && (
-                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                <span className="text-[var(--accent-primary)]">★</span>
                               )}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          </Td>
+                          <Td numeric className="text-right">
                             {p.kills}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          </Td>
+                          <Td numeric className="text-right">
                             {p.deaths}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-xs">
+                          </Td>
+                          <Td numeric className="text-right">
                             {p.assists}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <PointsDelta value={p.fantasyPts} />
-                          </TableCell>
-                        </TableRow>
+                          </Td>
+                          <Td numeric className="text-right">
+                            {p.fantasyPts.toFixed(1)}
+                          </Td>
+                        </Tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </TBody>
+                  </DataTable>
                 </div>
               ))}
 
               {data.maps.length === 0 && (
-                <p className="text-center text-sm text-[--muted-foreground]">
+                <p className="mt-6 text-center text-[13px] text-[var(--text-tertiary)]">
                   No maps played yet.
                 </p>
               )}
@@ -193,9 +182,7 @@ export function MatchDrawer({ matchId, open, onClose }: MatchDrawerProps) {
 
         {!loading && !data && open && (
           <div className="flex h-40 items-center justify-center">
-            <span className="text-sm text-[--muted-foreground]">
-              Match not found.
-            </span>
+            <span className="text-[13px] text-[var(--text-tertiary)]">Match not found.</span>
           </div>
         )}
       </SheetContent>
