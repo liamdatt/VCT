@@ -1,20 +1,23 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { PlayerCard } from '@/components/shared/PlayerCard';
+import { PlayerPortraitCard } from './PlayerPortraitCard';
 import { FreeAgencyModal } from './FreeAgencyModal';
 import { TradeProposalFlow } from './TradeProposalFlow';
 import { changeCaptain } from '@/lib/actions/captain';
 
-type RosterSlot = {
+type PlayerSlot = {
   id: string;
   playerId: string;
   handle: string;
   teamName: string;
-  isCaptain: boolean;
-  acquiredVia: string;
+  teamShortCode: string;
   totalPoints: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  mapsPlayed: number;
 };
 
 type FreeAgent = {
@@ -32,88 +35,76 @@ type Manager = {
 
 type Props = {
   leagueSlug: string;
-  slots: RosterSlot[];
+  otherPlayers: PlayerSlot[];
   freeAgents: FreeAgent[];
   managers: Manager[];
   cooldownReached: boolean;
-  captainCooldownActive: boolean;
+  captainCooldownDays: number | null;
 };
 
 export function RosterClient({
   leagueSlug,
-  slots,
+  otherPlayers,
   freeAgents,
   managers,
   cooldownReached,
-  captainCooldownActive,
+  captainCooldownDays,
 }: Props) {
   const router = useRouter();
-  const [faModal, setFaModal] = useState<{
-    playerId: string;
-    handle: string;
-  } | null>(null);
-  const [tradeModal, setTradeModal] = useState<{
-    playerId: string;
-    handle: string;
-  } | null>(null);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = React.useTransition();
+  const [dropPlayer, setDropPlayer] = React.useState<PlayerSlot | null>(null);
+  const [tradePlayer, setTradePlayer] = React.useState<PlayerSlot | null>(null);
 
-  const handleCaptainToggle = (playerId: string) => {
+  function onMakeCaptain(playerId: string) {
     startTransition(async () => {
       try {
         await changeCaptain({ leagueSlug, newCaptainPlayerId: playerId });
         router.refresh();
-      } catch {
-        // Captain cooldown or other error — ignore silently
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'failed');
       }
     });
-  };
+  }
 
   return (
     <>
-      <div className="space-y-2">
-        {slots.map((s) => (
-          <PlayerCard
-            key={s.id}
-            handle={s.handle}
-            teamName={s.teamName}
-            totalPoints={s.totalPoints}
-            isCaptain={s.isCaptain}
-            acquiredVia={s.acquiredVia}
-            captainCooldownActive={captainCooldownActive}
-            onCaptainToggle={() => handleCaptainToggle(s.playerId)}
-            onDrop={() => setFaModal({ playerId: s.playerId, handle: s.handle })}
-            onTrade={() =>
-              setTradeModal({ playerId: s.playerId, handle: s.handle })
-            }
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {otherPlayers.map((p) => (
+          <PlayerPortraitCard
+            key={p.id}
+            handle={p.handle}
+            teamName={p.teamName}
+            teamShortCode={p.teamShortCode}
+            totalPoints={p.totalPoints}
+            kills={p.kills}
+            deaths={p.deaths}
+            assists={p.assists}
+            mapsPlayed={p.mapsPlayed}
+            captainCooldownDays={captainCooldownDays}
+            onDrop={() => setDropPlayer(p)}
+            onTrade={() => setTradePlayer(p)}
+            onMakeCaptain={() => !isPending && onMakeCaptain(p.playerId)}
           />
         ))}
-        {slots.length === 0 && (
-          <p className="py-8 text-center text-sm text-[--muted-foreground]">
-            No players on your roster.
-          </p>
-        )}
       </div>
-
-      {faModal && (
+      {dropPlayer && (
         <FreeAgencyModal
           open
-          onClose={() => setFaModal(null)}
+          onClose={() => setDropPlayer(null)}
           leagueSlug={leagueSlug}
-          droppedPlayerId={faModal.playerId}
-          droppedPlayerHandle={faModal.handle}
+          droppedPlayerId={dropPlayer.playerId}
+          droppedPlayerHandle={dropPlayer.handle}
           freeAgents={freeAgents}
           cooldownReached={cooldownReached}
         />
       )}
-
-      {tradeModal && (
+      {tradePlayer && (
         <TradeProposalFlow
           open
-          onClose={() => setTradeModal(null)}
+          onClose={() => setTradePlayer(null)}
           leagueSlug={leagueSlug}
-          offeredPlayerId={tradeModal.playerId}
-          offeredPlayerHandle={tradeModal.handle}
+          offeredPlayerId={tradePlayer.playerId}
+          offeredPlayerHandle={tradePlayer.handle}
           managers={managers}
         />
       )}
