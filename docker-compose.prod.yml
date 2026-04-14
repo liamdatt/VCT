@@ -16,9 +16,12 @@ services:
 
   vlrapi:
     build:
-      context: .
-      dockerfile: Dockerfile.vlrapi
+      context: ./vlr-scraper
+      dockerfile: Dockerfile
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
 
   web:
     build:
