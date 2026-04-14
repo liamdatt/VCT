@@ -46,7 +46,7 @@ export async function getRecentMatches(leagueSlug: string, limit = 3) {
 
   return db.match.findMany({
     where: { leagueId: league.id, status: 'COMPLETED' },
-    include: { team1: true, team2: true },
+    include: { team1: true, team2: true, games: true },
     orderBy: { scheduledAt: 'desc' },
     take: limit,
   });
