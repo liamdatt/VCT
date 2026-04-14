@@ -7,14 +7,18 @@ export default async function PlayersPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const players = await getPlayerPool(slug);
-
-  const teams = [...new Set(players.map((p) => p.teamName))].sort();
-
+  const rows = await getPlayerPool(slug);
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-[--foreground]">Players</h1>
-      <PlayersClient players={players} teams={teams} />
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-[40px] leading-none font-medium text-[var(--text-primary)]">
+          Players
+        </h1>
+        <p className="mt-1 text-[13px] text-[var(--text-tertiary)]">
+          Full player pool. Click any row for the full stat breakdown.
+        </p>
+      </div>
+      <PlayersClient rows={rows} />
     </div>
   );
 }

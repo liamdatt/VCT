@@ -1,19 +1,11 @@
 'use client';
-
-import { useState, useMemo } from 'react';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import * as React from 'react';
+import { PlayersFilterBar } from './PlayersFilterBar';
+import { DataTable, THead, Th, TBody, Tr, Td } from '@/components/shared/DataTable';
 import { PlayerDrawer } from '@/components/shared/PlayerDrawer';
+import { Badge } from '@/components/shared/Badge';
 
-type PlayerRow = {
+export type PlayerRow = {
   id: string;
   handle: string;
   teamName: string;
@@ -26,204 +18,98 @@ type PlayerRow = {
   mapsPlayed: number;
 };
 
-type SortKey = 'handle' | 'totalPoints' | 'totalKills' | 'totalDeaths' | 'totalAssists' | 'mapsPlayed';
+export function PlayersClient({ rows }: { rows: PlayerRow[] }) {
+  const [ownership, setOwnership] = React.useState<'all' | 'free' | 'owned'>('all');
+  const [team, setTeam] = React.useState<string | null>(null);
+  const [search, setSearch] = React.useState('');
+  const [openId, setOpenId] = React.useState<string | null>(null);
 
-type Props = {
-  players: PlayerRow[];
-  teams: string[];
-};
+  const teams = React.useMemo(
+    () => [...new Set(rows.map((r) => r.teamShortCode))].sort(),
+    [rows],
+  );
 
-export function PlayersClient({ players, teams }: Props) {
-  const [search, setSearch] = useState('');
-  const [teamFilter, setTeamFilter] = useState('');
-  const [ownerFilter, setOwnerFilter] = useState<'all' | 'free' | 'owned'>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('totalPoints');
-  const [sortAsc, setSortAsc] = useState(false);
-  const [drawerPlayerId, setDrawerPlayerId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-
-  const filtered = useMemo(() => {
-    let result = players;
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((p) => p.handle.toLowerCase().includes(q));
-    }
-    if (teamFilter) {
-      result = result.filter((p) => p.teamName === teamFilter);
-    }
-    if (ownerFilter === 'free') {
-      result = result.filter((p) => p.ownerUsername === null);
-    } else if (ownerFilter === 'owned') {
-      result = result.filter((p) => p.ownerUsername !== null);
-    }
-    const dir = sortAsc ? 1 : -1;
-    result = [...result].sort((a, b) => {
-      if (sortKey === 'handle') {
-        return dir * a.handle.localeCompare(b.handle);
-      }
-      return dir * ((a[sortKey] as number) - (b[sortKey] as number));
-    });
-    return result;
-  }, [players, search, teamFilter, ownerFilter, sortKey, sortAsc]);
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortAsc(!sortAsc);
-    } else {
-      setSortKey(key);
-      setSortAsc(false);
-    }
-  };
-
-  const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return '';
-    return sortAsc ? ' \u2191' : ' \u2193';
-  };
+  const filtered = rows.filter((r) => {
+    if (ownership === 'free' && r.ownerUsername) return false;
+    if (ownership === 'owned' && !r.ownerUsername) return false;
+    if (team && r.teamShortCode !== team) return false;
+    if (search && !r.handle.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   return (
-    <>
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          placeholder="Search by handle..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-48"
-        />
-        <select
-          value={teamFilter}
-          onChange={(e) => setTeamFilter(e.target.value)}
-          className="rounded-md border border-[--border] bg-[--card] px-3 py-2 text-sm text-[--foreground]"
-        >
-          <option value="">All Teams</option>
-          {teams.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <select
-          value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value as 'all' | 'free' | 'owned')}
-          className="rounded-md border border-[--border] bg-[--card] px-3 py-2 text-sm text-[--foreground]"
-        >
-          <option value="all">All Players</option>
-          <option value="free">Free Agents</option>
-          <option value="owned">Owned</option>
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead
-                className="cursor-pointer"
-                onClick={() => toggleSort('handle')}
-              >
-                Player{sortIndicator('handle')}
-              </TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead>Owner</TableHead>
-              <TableHead
-                className="cursor-pointer text-right"
-                onClick={() => toggleSort('totalPoints')}
-              >
-                Pts{sortIndicator('totalPoints')}
-              </TableHead>
-              <TableHead
-                className="cursor-pointer text-right"
-                onClick={() => toggleSort('totalKills')}
-              >
-                K{sortIndicator('totalKills')}
-              </TableHead>
-              <TableHead
-                className="cursor-pointer text-right"
-                onClick={() => toggleSort('totalDeaths')}
-              >
-                D{sortIndicator('totalDeaths')}
-              </TableHead>
-              <TableHead
-                className="cursor-pointer text-right"
-                onClick={() => toggleSort('totalAssists')}
-              >
-                A{sortIndicator('totalAssists')}
-              </TableHead>
-              <TableHead
-                className="cursor-pointer text-right"
-                onClick={() => toggleSort('mapsPlayed')}
-              >
-                Maps{sortIndicator('mapsPlayed')}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((p) => (
-              <TableRow
-                key={p.id}
-                className="cursor-pointer hover:bg-[--card]/80"
-                onClick={() => {
-                  setDrawerPlayerId(p.id);
-                  setDrawerOpen(true);
-                }}
-              >
-                <TableCell className="font-medium text-[--foreground]">
-                  {p.handle}
-                </TableCell>
-                <TableCell className="text-xs text-[--muted-foreground]">
-                  {p.teamShortCode}
-                </TableCell>
-                <TableCell>
-                  {p.ownerUsername ? (
-                    <Badge variant="outline" className="text-[10px]">
-                      {p.ownerUsername}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] text-[--chart-2]"
-                    >
-                      Free Agent
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {p.totalPoints.toFixed(1)}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {p.totalKills}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {p.totalDeaths}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {p.totalAssists}
-                </TableCell>
-                <TableCell className="text-right font-mono text-sm">
-                  {p.mapsPlayed}
-                </TableCell>
-              </TableRow>
-            ))}
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="py-8 text-center text-sm text-[--muted-foreground]"
-                >
-                  No players found.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <PlayerDrawer
-        playerId={drawerPlayerId}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+    <div className="space-y-4">
+      <PlayersFilterBar
+        teams={teams}
+        selectedTeam={team}
+        ownership={ownership}
+        search={search}
+        onTeamChange={setTeam}
+        onOwnershipChange={setOwnership}
+        onSearchChange={setSearch}
       />
-    </>
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+        <DataTable>
+          <THead>
+            <tr>
+              <Th>Player</Th>
+              <Th>Team</Th>
+              <Th>Owner</Th>
+              <Th className="text-right">Points</Th>
+              <Th className="text-right">K</Th>
+              <Th className="text-right">D</Th>
+              <Th className="text-right">A</Th>
+              <Th className="text-right">Maps</Th>
+            </tr>
+          </THead>
+          <TBody>
+            {filtered.map((r) => (
+              <Tr key={r.id} onClick={() => setOpenId(r.id)}>
+                <Td>
+                  <span className="flex items-center gap-1.5">
+                    {!r.ownerUsername && (
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    )}
+                    <span className="font-medium text-[var(--text-primary)]">{r.handle}</span>
+                  </span>
+                </Td>
+                <Td>
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                    {r.teamShortCode}
+                  </span>
+                </Td>
+                <Td>
+                  {r.ownerUsername ? (
+                    <Badge variant="neutral">{r.ownerUsername}</Badge>
+                  ) : (
+                    <Badge variant="win">Free Agent</Badge>
+                  )}
+                </Td>
+                <Td numeric className="text-right font-semibold">
+                  {r.totalPoints.toFixed(1)}
+                </Td>
+                <Td numeric className="text-right">
+                  {r.totalKills}
+                </Td>
+                <Td numeric className="text-right">
+                  {r.totalDeaths}
+                </Td>
+                <Td numeric className="text-right">
+                  {r.totalAssists}
+                </Td>
+                <Td numeric className="text-right">
+                  {r.mapsPlayed}
+                </Td>
+              </Tr>
+            ))}
+          </TBody>
+        </DataTable>
+      </div>
+      <PlayerDrawer
+        playerId={openId}
+        open={!!openId}
+        onClose={() => setOpenId(null)}
+      />
+    </div>
   );
 }
