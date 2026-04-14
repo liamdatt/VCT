@@ -1,240 +1,207 @@
-# Deploying to Coolify
+# Deploying to Coolify (individual services)
 
-Guide for deploying VCT Fantasy to a self-hosted Coolify instance (Raspberry Pi or any Linux host). Follow top to bottom on first deploy. For subsequent deploys, only sections **10** (push to trigger) apply.
+Guide for deploying VCT Fantasy to a self-hosted Coolify instance by creating each of the 4 services as its own Coolify resource. This gives you independent deploy cycles, clearer logs, and easier scaling/swapping of individual pieces.
+
+All four services live in the **same Coolify project** so they share the internal Docker network and can reach each other by service name.
 
 ---
 
-## What's running in production
+## Service architecture
 
-Three Docker services orchestrated by `docker-compose.prod.yml`:
-
-| Service  | Image/build                          | Purpose                          |
-|----------|--------------------------------------|----------------------------------|
-| `web`    | Built from `Dockerfile.web`          | Next.js app + scoring worker + SSE |
-| `vlrapi` | Built from `vlr-scraper/Dockerfile`  | Custom vlr.gg BS4 scraper with cache |
-| `db`     | `postgres:16-alpine`                 | Database                         |
-| `backup` | `postgres:16-alpine` + cron script   | Daily `pg_dump` to a volume      |
-
-All four communicate over Coolify's internal Docker network. Only `web` is exposed to the outside world.
+| Service      | Coolify resource type       | Build source                          | Public?         |
+|--------------|-----------------------------|---------------------------------------|-----------------|
+| `db`         | **Database** → PostgreSQL   | Coolify-managed                       | Internal only   |
+| `vlrapi`     | **Application** → Dockerfile | `vlr-scraper/Dockerfile` in your repo | Internal only   |
+| `web`        | **Application** → Dockerfile | `Dockerfile.web` in your repo         | **Public** (domain) |
+| `backup`     | **Scheduled Task**          | Command against `db`                  | Internal only   |
 
 ---
 
 ## 1. Prerequisites
 
-- **Coolify 4.x** installed on your target server (Pi, VPS, etc.). If you don't have it, install it first: `curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash`.
-- **A git remote** the Coolify server can pull from. GitHub works best. Push your `master` branch there before continuing.
-- **A domain** (or subdomain) pointing to your Coolify server's public IP. You'll attach this to the `web` service. Cloudflare is free and handles DNS + SSL cleanly.
-- **A Discord application** at https://discord.com/developers/applications (same one you're already using for local dev — we'll just add a prod redirect URI).
-- **A Discord webhook URL** for your league channel (already configured for local dev — you'll reuse it).
-
-### Verify your local repo is ready
-
-```bash
-# From the repo root
-git status                        # should be clean
-git log --oneline | head -5       # should show recent UI commits
-git remote -v                     # must show a remote (github origin, typically)
-```
-
-If `git remote` is empty, add one:
-
-```bash
-git remote add origin git@github.com:<you>/vctfantasy.git
-git push -u origin master
-```
+- Coolify 4.x running on your target server.
+- Your repo pushed to a git remote (GitHub recommended — `https://github.com/liamdatt/VCT.git`).
+- A domain pointing at your Coolify server (e.g. `vctfantasy.yourdomain.com`).
+- Your Discord app already created at https://discord.com/developers/applications.
+- A Discord webhook URL for your league channel.
 
 ---
 
-## 2. Decide on a domain
+## 2. Add production redirect URI to Discord
 
-You need one public URL for the web app. Examples:
-
-- `vctfantasy.yourdomain.com` (subdomain — recommended)
-- `yourdomain.com/vct` (path — **not recommended**, Coolify is much happier with subdomain-per-app)
-
-Point that DNS A record at your Coolify server's public IP. If behind Cloudflare, set the record to "Proxied" and Coolify will terminate TLS inside its reverse proxy (Traefik).
-
-**Write the final URL down. You'll use it three times below:**
-- As `NEXTAUTH_URL` env var
-- As a Discord OAuth2 redirect URI
-- In Coolify's "Domain" field
-
----
-
-## 3. Discord app: production redirect URI
-
-In https://discord.com/developers/applications → your app → **OAuth2** → **Redirects**:
-
-Add **both** redirects (leave the local one for dev work):
+In Discord Dev Portal → your app → **OAuth2** → **Redirects**, add (keep the local one):
 
 ```
-http://localhost:3000/api/auth/callback/discord
 https://<your-domain>/api/auth/callback/discord
 ```
 
-Click **Save Changes**. Discord won't redirect to URIs that aren't on this allowlist.
+Save changes.
 
 ---
 
-## 4. Create the project in Coolify
+## 3. Create the Coolify project
 
-1. Log in to your Coolify dashboard.
-2. Click **+ New Resource** → **Public Repository** (or Private, if your repo is private — you'll need to connect GitHub via Coolify's GitHub App).
-3. **Repository URL:** your git repo URL.
-4. **Branch:** `master`.
-5. **Build Pack:** choose **Docker Compose**.
-6. **Compose file:** `docker-compose.prod.yml`.
-7. Click **Continue**.
+1. Coolify dashboard → **+ New Project** → name it `vctfantasy`.
+2. Pick the server you want to deploy to.
+3. **All four services below live inside this project.** Services in the same project share the same Docker network, so `web` can reach `db` at hostname `db` and `vlrapi` at hostname `vlrapi` automatically.
 
-Coolify will parse the compose file and show you the three services (`web`, `vlrapi`, `db`, `backup`). It'll offer to configure each one.
+> **Heads-up on internal hostnames:** Coolify assigns each application/service a network hostname. Sometimes it uses the raw name you gave it (e.g. `vlrapi`); other times it includes a random suffix (e.g. `vlrapi-abc123`). After creating each service, look at its **Connection / Internal URL** field in the service dashboard and **note the exact hostname** — you'll need it when setting `DATABASE_URL` and `VLRAPI_BASE_URL`.
 
 ---
 
-## 5. Service config: `web`
+## 4. Create the `db` service (PostgreSQL)
 
-The only service exposed publicly.
+1. Inside the project → **+ New Resource** → **Databases** → **PostgreSQL**.
+2. Version: **16**.
+3. Name: `vctfantasy-db` (or just `db` — Coolify will show the internal hostname afterward).
+4. **Credentials** (Coolify generates these; override if you want):
+   - `POSTGRES_USER`: `vct`
+   - `POSTGRES_PASSWORD`: generate strong (`openssl rand -base64 24`)
+   - `POSTGRES_DB`: `vctfantasy`
+5. **Persistent storage**: keep enabled. Coolify auto-creates a volume.
+6. Click **Deploy**.
 
-### Domain
-- Set the domain to `https://<your-domain>` (the one you set up in step 2).
-- Coolify auto-provisions TLS via Let's Encrypt.
+Wait for it to be "Running" and "Healthy."
 
-### Port
-- Coolify should detect `3000` from the compose file automatically. If not, set **Port** to `3000`.
+### Copy the connection string
+
+From the db service dashboard, copy the **Internal Connection URL**. It will look like:
+
+```
+postgresql://vct:<password>@vctfantasy-db-abc123:5432/vctfantasy
+```
+
+Save this — you'll paste it into `DATABASE_URL` for both `web` and `backup`.
+
+---
+
+## 5. Create the `vlrapi` service (Application)
+
+1. Inside the project → **+ New Resource** → **Application** → **Public Repository** (or Private if you connected GitHub).
+2. **Repository URL**: `https://github.com/liamdatt/VCT.git`
+3. **Branch**: `main` (or whichever you pushed to).
+4. **Build Pack**: **Dockerfile**.
+5. **Base Directory**: `/vlr-scraper` — this tells Coolify the Dockerfile and build context are inside that folder.
+6. **Dockerfile location**: `Dockerfile` (relative to base directory).
+7. Name: `vlrapi`.
+8. **Network**: confirm it's in the `vctfantasy` project.
+
+### Config
+
+- **Exposed port**: `8000`
+- **Domain**: leave blank (internal only).
+- **Environment variables**: none.
+- **DNS** (needed because vlr.gg doesn't resolve in some Docker defaults): under the service's **Advanced** → **Custom Docker Options**, add:
+  ```
+  --dns=8.8.8.8 --dns=1.1.1.1
+  ```
+  (If Coolify doesn't expose custom Docker options, the default DNS usually works on most Linux hosts. If the container can't resolve vlr.gg, come back and add this.)
+
+### Deploy
+
+Click **Deploy**. First build takes ~2 minutes (Python + BeautifulSoup install).
+
+### Note the internal hostname
+
+Once running, check the service dashboard for the internal hostname. It'll look like `vlrapi` or `vlrapi-xyz789`. Save this — you'll use it for `VLRAPI_BASE_URL`.
+
+Verify it works: from Coolify's terminal for the vlrapi service, run:
+
+```sh
+curl http://localhost:8000/health
+```
+
+Should return `{"status":"ok"}`.
+
+---
+
+## 6. Create the `web` service (Application)
+
+1. **+ New Resource** → **Application** → **Public Repository**.
+2. **Repository URL**: `https://github.com/liamdatt/VCT.git`
+3. **Branch**: `main`.
+4. **Build Pack**: **Dockerfile**.
+5. **Base Directory**: `/` (repo root).
+6. **Dockerfile location**: `Dockerfile.web`.
+7. Name: `web`.
+
+### Config
+
+- **Exposed port**: `3000`
+- **Domain**: `https://<your-domain>` — Coolify auto-provisions TLS via Let's Encrypt.
+- **Auto-deploy on push**: toggle ON if you want every `git push` to redeploy.
 
 ### Environment variables
 
-In the **Environment Variables** tab for the `web` service, paste these (**Build Variables** tab if Coolify separates them):
+Paste these into the service's **Environment Variables** tab (replace placeholders with your actual values):
 
 ```
-DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@db:5432/vctfantasy?schema=public
+DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@<db-internal-hostname>:5432/vctfantasy?schema=public
 NEXTAUTH_URL=https://<your-domain>
 NEXTAUTH_SECRET=<openssl rand -base64 32>
 AUTH_SECRET=<same value as NEXTAUTH_SECRET>
 DISCORD_CLIENT_ID=<from Discord dev portal>
 DISCORD_CLIENT_SECRET=<from Discord dev portal>
 DISCORD_WEBHOOK_URL=<your league channel webhook URL>
-VLRAPI_BASE_URL=http://vlrapi:8000
+VLRAPI_BASE_URL=http://<vlrapi-internal-hostname>:8000
 APP_TIMEZONE=America/Jamaica
 ```
 
-**Important:**
-- `DATABASE_URL` uses `db` (the service name) as the hostname and `5432` (internal Docker port) — NOT `localhost:5433` (that's the dev mapping).
-- `AUTH_SECRET` **must be the same value as** `NEXTAUTH_SECRET`. NextAuth v5 reads `AUTH_SECRET` by preference.
-- Generate a fresh secret with `openssl rand -base64 32`. Do NOT reuse your local dev secret.
+**Critical:**
+- `DATABASE_URL` hostname must match the exact internal hostname of the db service you noted in step 4.
+- `VLRAPI_BASE_URL` hostname must match the exact internal hostname of the vlrapi service from step 5.
+- `AUTH_SECRET` **must equal** `NEXTAUTH_SECRET`. NextAuth v5 prefers `AUTH_SECRET`.
+- Do NOT reuse your local dev secret — generate fresh.
 
----
+### Deploy
 
-## 6. Service config: `db`
+Click **Deploy**. First build ~5-10 minutes (Node install + Prisma generate + Next build).
 
-### Environment variables
-
-```
-POSTGRES_USER=vct
-POSTGRES_PASSWORD=<PROD_PG_PASSWORD>
-POSTGRES_DB=vctfantasy
-```
-
-Use a strong random password for `POSTGRES_PASSWORD` (e.g. `openssl rand -base64 24`). This password must appear in `DATABASE_URL` in step 5.
-
-### Volume
-
-Coolify should auto-create a persistent volume for `db_data`. Confirm it's listed under the service's **Volumes** tab. The Postgres data lives here — do NOT let Coolify recreate this volume on redeploy.
-
-### Exposed ports
-
-The `db` service has NO `ports:` mapping in compose — correct, it's internal-only. Do not expose it publicly. If Coolify offers to expose it, skip.
-
----
-
-## 7. Service config: `vlrapi`
-
-### Environment variables
-
-None required. The scraper is self-contained.
-
-### Build context
-
-Coolify picks this up from compose automatically (`./vlr-scraper`). First build takes ~2 minutes (Python deps).
-
-### DNS
-
-The compose file already adds `8.8.8.8` and `1.1.1.1` DNS servers — needed because vlr.gg won't resolve inside the default Docker network on many hosts. Don't override.
-
-### Exposed ports
-
-None. The scraper is only reachable by `web` over the internal network at `http://vlrapi:8000`. Do not expose publicly.
-
----
-
-## 8. Service config: `backup`
-
-### Environment variables
+On boot the container auto-runs `npx prisma migrate deploy` before starting the Next server — watch the logs for:
 
 ```
-DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@db:5432/vctfantasy?schema=public
-```
-
-Same URL as `web`.
-
-### Volume
-
-Coolify auto-creates `backups`. The sidecar runs `pg_dump` daily and keeps the last 14 dumps as `.sql.gz` files in `/backups`.
-
-**Restoring from a backup** (manual, future-you problem):
-
-```bash
-# On the Coolify host, find the backup:
-docker volume inspect <project>_backups   # gets the host path
-ls /var/lib/docker/volumes/.../\_data
-
-# Copy a dump into the running db container:
-docker cp vctfantasy-<ts>.sql.gz $(docker ps -qf name=db):/tmp/
-# Shell into db:
-docker exec -it $(docker ps -qf name=db) sh
-# Inside:
-gunzip -c /tmp/vctfantasy-<ts>.sql.gz | psql -U vct -d vctfantasy
-```
-
----
-
-## 9. First deploy
-
-1. In Coolify, click **Deploy**. Watch the build log.
-2. First build takes **5-10 minutes** (Node + Prisma generate + Python deps).
-3. When all three services are "Running" and `web` shows a green status, visit `https://<your-domain>`.
-4. You should see the VCT Fantasy splash page.
-
-### 9a. Run the database migration
-
-The `web` container's startup CMD is:
-
-```sh
-sh -c "npx prisma migrate deploy && node server.js"
-```
-
-So migrations run automatically on first boot. Verify in logs:
-
-```
-✔ Generated Prisma Client (...)
 All migrations have been successfully applied.
-Starting...
 ```
 
-If you see `No pending migrations to apply` on the first boot — something is wrong, the db volume has stale data. Reset by destroying the `db_data` volume in Coolify and redeploying.
+Visit `https://<your-domain>` — you should see the VCT Fantasy splash.
 
-### 9b. Seed the database
+---
 
-**This is a one-time operation for the Stage 1 league.**
+## 7. Create the `backup` service (Scheduled Task)
 
-The seed script lives at `scripts/seed-stage1.ts` and has the rosters, captains, and FA history hardcoded.
+Coolify has a native "Scheduled Task" resource that runs a command on a cron.
 
-Open a shell into the `web` container via Coolify's **Terminal** tab (or `docker exec`):
+1. Inside the project → **+ New Resource** → **Scheduled Task**.
+2. Name: `pg-backup`.
+3. **Schedule** (cron): `0 3 * * *` (daily 3 AM — adjust to your timezone).
+4. **Image**: `postgres:16-alpine`
+5. **Command**:
+   ```sh
+   sh -c 'TS=$(date -u +%Y-%m-%dT%H-%M-%SZ); pg_dump "$DATABASE_URL" | gzip > /backups/vctfantasy-${TS}.sql.gz && ls -1t /backups/vctfantasy-*.sql.gz | tail -n +15 | xargs -r rm --'
+   ```
+6. **Environment variables**:
+   ```
+   DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@<db-internal-hostname>:5432/vctfantasy?schema=public
+   ```
+7. **Volume**: add a named volume `backups` mounted at `/backups`.
+
+Save. Coolify will invoke this every day.
+
+**Alternative (simpler):** skip the backup service entirely and rely on Coolify's own database backup feature. On the `db` service dashboard, go to **Backups** tab → enable daily backups. Coolify handles the `pg_dump` for you and stores it in its own storage.
+
+---
+
+## 8. First-time seed
+
+After `web` is running and migrations have applied, run the one-time Stage 1 seed.
+
+In Coolify, open the `web` service → **Terminal** tab. You get a shell inside the running container.
 
 ```sh
 WORKER_DISABLED=1 npx tsx scripts/seed-stage1.ts
 ```
 
-Expected output ends with:
+Expected tail:
 
 ```
 [seed] populated MatchRoster for N matches
@@ -245,152 +212,135 @@ Expected output ends with:
 [seed] Stage 1 bootstrap complete
 ```
 
-The "FAIL" validation lines are expected and benign — the spreadsheet reflects manual adjustments the app doesn't know about yet. Use the admin audit page (`/admin/leagues/vct-americas-2026-stage-1/audit`) to reconcile per-match rosters.
+The "FAIL" validation warnings are expected — reconcile per-match via the admin audit page.
 
-**DO NOT re-run `seed:stage1` casually.** It wipes and re-creates the league, all matches, snapshots, and FA history. Re-running is safe but destructive if anyone has made changes through the UI in the meantime.
-
-### 9c. First sign-in
-
-Visit `https://<your-domain>` → click **Sign in with Discord** → authorize → you should land on `/leagues` and see the league.
-
-If you see "not in any leagues":
-1. Open a shell in the web container.
-2. Run: `npx tsx -e "import 'dotenv/config'; import { db } from './src/lib/db'; (async () => { const users = await db.user.findMany({ include: { memberships: true } }); for (const u of users) console.log(u.discordId, u.username, u.memberships.length); })().finally(() => db.\$disconnect());"`
-3. Look for a duplicate user with a long numeric `discordId` and 0 memberships — delete it (orphan from auth flow before seed migration) and sign in again.
+**Do NOT re-run seed:stage1 casually** — it wipes and re-seeds the league.
 
 ---
 
-## 10. Subsequent deploys (updating the app)
+## 9. First sign-in
 
-Once everything is set up, future deploys are:
+Visit `https://<your-domain>` → click **Sign in with Discord** → authorize → land on `/leagues`.
 
-```bash
-# On your laptop
-git push origin master
-```
+If sign-in fails:
+- Verify Discord redirect URI (step 2) matches exactly — `https://`, no trailing slash.
+- Verify `NEXTAUTH_URL` is `https://<your-domain>` with no trailing slash.
+- Verify `AUTH_SECRET` and `NEXTAUTH_SECRET` are identical.
 
-If Coolify has **auto-deploy on push** enabled (toggle in the app settings), it redeploys automatically. Otherwise click **Redeploy** in the Coolify dashboard.
-
-Coolify will:
-1. Pull latest commit
-2. Rebuild images (cached layers = fast)
-3. Recreate containers with the new image (rolling restart)
-4. Run `prisma migrate deploy` again (no-op if no new migrations)
-
-Downtime is typically 10-30 seconds per service swap.
-
-### Schema changes
-
-If you add a new Prisma migration locally (`npx prisma migrate dev --name xyz`), commit the `prisma/migrations/*` folder. On production deploy, `prisma migrate deploy` picks it up automatically — no manual step.
-
-### Re-ingesting matches after a code change to the scoring engine
-
-Open a shell in `web`:
+If you land but see "not in any leagues," there may be an orphan user from a pre-seed sign-in. From the web service terminal:
 
 ```sh
-WORKER_DISABLED=1 npx tsx -e "
+npx tsx -e "
 import 'dotenv/config';
 import { db } from './src/lib/db';
-import { recomputeMatchSnapshots } from './src/lib/scoring/recompute';
 (async () => {
-  const matches = await db.match.findMany({ select: { id: true } });
-  for (const m of matches) await recomputeMatchSnapshots(m.id);
-  console.log('recomputed', matches.length, 'matches');
+  const users = await db.user.findMany({ include: { memberships: true } });
+  for (const u of users) console.log(u.discordId, u.username, u.memberships.length);
 })().finally(() => db.\$disconnect());
 "
 ```
 
-This is safe — it regenerates `ScoringSnapshot` rows from existing `PlayerGameStat` + `MatchRoster` data without re-fetching from vlr.gg.
+Delete any user with 0 memberships and a long numeric `discordId`:
+
+```sh
+npx tsx -e "
+import 'dotenv/config';
+import { db } from './src/lib/db';
+(async () => {
+  await db.user.delete({ where: { discordId: '<the-orphan-snowflake>' } });
+  console.log('deleted');
+})().finally(() => db.\$disconnect());
+"
+```
+
+Then sign in again. The auth callback will migrate your seeded username-based record to the real Discord snowflake.
 
 ---
 
-## 11. Operational notes
+## 10. Subsequent deploys
 
-### Scoring worker
+Push to `main`:
 
-The `web` container starts the scoring worker at boot (via `bootstrapWorker()` in `layout.tsx`). It polls `vlrapi` every 60 seconds for each ACTIVE league. New matches auto-ingest, snapshots auto-compute, SSE pushes to connected browsers.
+```bash
+git push origin main
+```
 
-If you ever need to disable the worker (e.g. to let you run the seed manually), set `WORKER_DISABLED=1` in the web env vars and redeploy. Remove the flag and redeploy to re-enable.
+If auto-deploy is on, Coolify detects the push and rebuilds **only the services whose source changed** — for UI-only changes, only `web` rebuilds; `vlrapi` and `db` are untouched.
 
-### vlr.gg rate limiting
+Otherwise click **Redeploy** on the specific service(s) that changed.
 
-Our scraper caches completed matches for 24h and event match lists for 5m. vlr.gg rarely rate-limits under normal traffic. If the worker starts spamming errors in `IngestError` table, check `vlrapi` logs — if you see 403/429 from vlr.gg, just wait 15 minutes and it clears.
+Prisma migrations apply automatically on `web` boot via `prisma migrate deploy`.
 
-### Logs
+---
 
-Coolify shows per-service logs in the dashboard. For the web app, filter for `[worker]` to see the scoring worker's tick log.
+## 11. Env var checklist (for copy-paste)
 
-### Resource expectations (Raspberry Pi 5, 8GB)
+### db (Coolify-managed, auto-generates)
 
-- `web`: ~300 MB RAM idle, ~500 MB during matchday
-- `db`: ~100 MB RAM
-- `vlrapi`: ~80 MB RAM
-- `backup`: ~20 MB RAM
+```
+POSTGRES_USER=vct
+POSTGRES_PASSWORD=<strong random>
+POSTGRES_DB=vctfantasy
+```
 
-Total: ~500 MB. Comfortable on a Pi with 2 GB to spare for the OS.
+### vlrapi
 
-### Monitoring uptime
+No env vars required.
 
-Coolify has a built-in "health check" per service. All three services have `restart: unless-stopped` — they'll auto-restart if they crash. The `db` has a pg_isready healthcheck; the `web` container depends on `db` being healthy before starting.
+### web
 
-For external monitoring, hit `https://<your-domain>/` (splash page) — expect 200 OK.
+```
+DATABASE_URL=postgresql://vct:<password>@<db-internal-hostname>:5432/vctfantasy?schema=public
+NEXTAUTH_URL=https://<your-domain>
+NEXTAUTH_SECRET=<openssl rand -base64 32>
+AUTH_SECRET=<same as NEXTAUTH_SECRET>
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_WEBHOOK_URL=
+VLRAPI_BASE_URL=http://<vlrapi-internal-hostname>:8000
+APP_TIMEZONE=America/Jamaica
+```
+
+### backup (if using custom scheduled task)
+
+```
+DATABASE_URL=postgresql://vct:<password>@<db-internal-hostname>:5432/vctfantasy?schema=public
+```
 
 ---
 
 ## 12. Troubleshooting
 
-### `Sign in with Discord` returns to `/` without signing in
+### `web` can't reach `db`
 
-- Check the Discord OAuth2 redirects include `https://<your-domain>/api/auth/callback/discord` **exactly** (https, not http, trailing slash match).
-- Check `NEXTAUTH_URL` in the web env matches `https://<your-domain>` with no trailing slash.
-- Regenerate `NEXTAUTH_SECRET` and `AUTH_SECRET` to matching values and redeploy.
+- Double-check the `<db-internal-hostname>` in `DATABASE_URL` matches exactly what Coolify shows under the db service → **Connection URL**.
+- Confirm both services are in the **same project** — services across projects don't share the network.
+- Restart the `web` service after env var changes.
 
-### vlr.gg data not updating
+### `web` can't reach `vlrapi`
 
-- In Coolify, check `vlrapi` logs for recent successful requests.
-- Test directly from the Coolify host: `docker exec -it <web-container> curl http://vlrapi:8000/health` — should return `{"status":"ok"}`.
-- If the scraper is unreachable, the web container's `IngestError` table will fill up. Check via admin page or SQL.
+Same as above but for the vlrapi hostname. Test from the web container's terminal:
 
-### `Bind for 0.0.0.0:3000 failed: port is already allocated`
+```sh
+curl -v http://<vlrapi-internal-hostname>:8000/health
+```
 
-Coolify's Traefik already proxies port 80/443 to the internal service port. You should NOT expose `3000` on the host. If the `ports:` mapping in compose causes issues, remove it entirely — Coolify will connect to the service via Docker network.
+Expect `{"status":"ok"}`.
 
-### Postgres won't start
+### `vlrapi` 502 / DNS errors when scraping vlr.gg
 
-- Check `db` logs — usually a volume permission issue.
-- Verify `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` are set in the db env vars.
-- Verify the `DATABASE_URL` in web uses those exact values.
+Add `--dns=8.8.8.8 --dns=1.1.1.1` to the vlrapi service's Docker options. Some hosts use a default Docker DNS that can't resolve external names.
 
-### Migration fails on first deploy
+### `Sign in with Discord` bounces back to `/`
 
-- Ensure the `prisma/` directory is committed to git (including `migrations/`). It's NOT gitignored, but double-check.
-- If the db volume is blank, migrations apply fine. If it has leftover data from a test, run `npx prisma migrate reset --force` from a shell in the web container (destructive).
+- Discord redirect URIs must include `https://<your-domain>/api/auth/callback/discord` verbatim.
+- `NEXTAUTH_URL` no trailing slash.
+- `AUTH_SECRET === NEXTAUTH_SECRET`.
+
+### Scoring worker seems stuck
+
+Check the `web` service logs for `[worker]` lines. If silent, `WORKER_DISABLED` may be set — remove it from env vars and redeploy. If there are errors, usually `vlrapi` is unreachable (see previous).
 
 ---
 
-## Quick reference: env vars checklist
-
-Copy-paste for Coolify:
-
-```
-# web service
-DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@db:5432/vctfantasy?schema=public
-NEXTAUTH_URL=https://<your-domain>
-NEXTAUTH_SECRET=<32-byte random base64>
-AUTH_SECRET=<same as NEXTAUTH_SECRET>
-DISCORD_CLIENT_ID=<from discord>
-DISCORD_CLIENT_SECRET=<from discord>
-DISCORD_WEBHOOK_URL=<discord channel webhook>
-VLRAPI_BASE_URL=http://vlrapi:8000
-APP_TIMEZONE=America/Jamaica
-
-# db service
-POSTGRES_USER=vct
-POSTGRES_PASSWORD=<PROD_PG_PASSWORD>
-POSTGRES_DB=vctfantasy
-
-# backup service
-DATABASE_URL=postgresql://vct:<PROD_PG_PASSWORD>@db:5432/vctfantasy?schema=public
-```
-
-You're done. 🚀
+Done. 🚀
