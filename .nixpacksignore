@@ -1,0 +1,8 @@
+vlr-scraper/
+docker-compose*.yml
+Dockerfile.web
+tests/
+docs/
+*.xlsx
+.next/
+node_modules/
