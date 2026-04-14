@@ -1,133 +1,73 @@
 'use client';
-
-import { useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
+import * as React from 'react';
 import { TradeRow } from '@/components/trade/TradeRow';
-import { TradeProposalFlow } from '@/components/roster/TradeProposalFlow';
 
-type TradeItem = {
-  handle: string;
-  direction: 'PROPOSER_TO_RECEIVER' | 'RECEIVER_TO_PROPOSER';
-};
-
-type TradeData = {
+type Row = {
   id: string;
   proposerName: string;
   receiverName: string;
-  items: TradeItem[];
-  role: 'proposer' | 'receiver';
   status: string;
+  items: Array<{ handle: string; direction: 'PROPOSER_TO_RECEIVER' | 'RECEIVER_TO_PROPOSER' }>;
+  isInbox: boolean;
   createdAt: string;
 };
 
-type Manager = {
-  userId: string;
-  username: string;
-  players: { id: string; handle: string; teamName: string }[];
-};
-
-type MyPlayer = {
-  id: string;
-  handle: string;
-};
-
 type Props = {
-  inbox: TradeData[];
-  history: TradeData[];
+  inboxIds: string[];
+  historyIds: string[];
+  rows: Row[];
   leagueSlug: string;
-  managers: Manager[];
-  myPlayers: MyPlayer[];
 };
 
-export function TradesClient({
-  inbox,
-  history,
-  leagueSlug,
-  managers,
-  myPlayers,
-}: Props) {
-  const [tradeOpen, setTradeOpen] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<MyPlayer | null>(null);
+type Tab = 'inbox' | 'history';
 
-  const openPropose = () => {
-    if (myPlayers.length > 0) {
-      setSelectedPlayer(myPlayers[0]);
-      setTradeOpen(true);
-    }
-  };
+export function TradesClient({ inboxIds, historyIds, rows }: Props) {
+  const [tab, setTab] = React.useState<Tab>(inboxIds.length > 0 ? 'inbox' : 'history');
+  const ids = tab === 'inbox' ? inboxIds : historyIds;
+  const visible = rows.filter((r) => ids.includes(r.id));
 
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[--foreground]">Trades</h1>
-        <Button onClick={openPropose} disabled={myPlayers.length === 0}>
-          Propose Trade
-        </Button>
+    <div className="space-y-5">
+      <div className="relative flex border-b border-[var(--border-subtle)]">
+        {(['inbox', 'history'] as const).map((t) => {
+          const isActive = t === tab;
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`relative flex h-9 items-center gap-2 px-4 text-[13px] font-medium transition-colors ${
+                isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+              }`}
+            >
+              {t === 'inbox' ? 'Inbox' : 'History'}
+              {t === 'inbox' && inboxIds.length > 0 && (
+                <span className="inline-flex h-4 items-center rounded-full bg-[var(--accent-primary)]/20 px-1.5 text-[10px] font-semibold text-[var(--accent-primary)]">
+                  {inboxIds.length}
+                </span>
+              )}
+              {isActive && (
+                <span className="absolute right-3 bottom-0 left-3 h-0.5 rounded-t bg-[var(--accent-primary)]" />
+              )}
+            </button>
+          );
+        })}
       </div>
-
-      <Tabs defaultValue="inbox">
-        <TabsList className="mb-4">
-          <TabsTrigger value="inbox">Inbox ({inbox.length})</TabsTrigger>
-          <TabsTrigger value="history">History ({history.length})</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="inbox">
-          <div className="space-y-2">
-            {inbox.map((t) => (
-              <TradeRow
-                key={t.id}
-                tradeId={t.id}
-                proposerName={t.proposerName}
-                receiverName={t.receiverName}
-                items={t.items}
-                role={t.role}
-                status={t.status}
-              />
-            ))}
-            {inbox.length === 0 && (
-              <p className="py-8 text-center text-sm text-[--muted-foreground]">
-                No pending trades.
-              </p>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="history">
-          <div className="space-y-2">
-            {history.map((t) => (
-              <TradeRow
-                key={t.id}
-                tradeId={t.id}
-                proposerName={t.proposerName}
-                receiverName={t.receiverName}
-                items={t.items}
-                role={t.role}
-                status={t.status}
-              />
-            ))}
-            {history.length === 0 && (
-              <p className="py-8 text-center text-sm text-[--muted-foreground]">
-                No trade history.
-              </p>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {selectedPlayer && (
-        <TradeProposalFlow
-          open={tradeOpen}
-          onClose={() => {
-            setTradeOpen(false);
-            setSelectedPlayer(null);
-          }}
-          leagueSlug={leagueSlug}
-          offeredPlayerId={selectedPlayer.id}
-          offeredPlayerHandle={selectedPlayer.handle}
-          managers={managers}
-        />
-      )}
-    </>
+      <div className="space-y-2">
+        {visible.length === 0 && (
+          <p className="py-8 text-center text-[13px] text-[var(--text-tertiary)]">Nothing here.</p>
+        )}
+        {visible.map((r) => (
+          <TradeRow
+            key={r.id}
+            tradeId={r.id}
+            proposerName={r.proposerName}
+            receiverName={r.receiverName}
+            items={r.items}
+            role={r.isInbox ? 'receiver' : 'proposer'}
+            status={r.status}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
