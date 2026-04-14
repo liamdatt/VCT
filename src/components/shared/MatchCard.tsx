@@ -1,11 +1,16 @@
-import { Badge } from '@/components/ui/badge';
+'use client';
+import { TeamLogo } from './TeamLogo';
+import { Badge } from './Badge';
 import { PointsDelta } from './PointsDelta';
+import { StatusDot } from './StatusDot';
 
-type MatchCardProps = {
+type Props = {
   team1Name: string;
+  team1ShortCode: string;
+  team1Score?: string;
   team2Name: string;
-  team1Score?: number | string;
-  team2Score?: number | string;
+  team2ShortCode: string;
+  team2Score?: string;
   status: 'UPCOMING' | 'LIVE' | 'COMPLETED';
   date?: string;
   time?: string;
@@ -17,8 +22,10 @@ type MatchCardProps = {
 
 export function MatchCard({
   team1Name,
-  team2Name,
+  team1ShortCode,
   team1Score,
+  team2Name,
+  team2ShortCode,
   team2Score,
   status,
   date,
@@ -27,82 +34,53 @@ export function MatchCard({
   fantasyDelta,
   myPlayerHandles,
   onClick,
-}: MatchCardProps) {
-  const hasScore =
-    team1Score !== undefined &&
-    team1Score !== null &&
-    team2Score !== undefined &&
-    team2Score !== null;
-
+}: Props) {
+  const hasMine = myPlayerHandles && myPlayerHandles.length > 0;
   return (
-    <div
+    <button
       onClick={onClick}
-      className={`rounded-lg border border-[--border] bg-[--card] p-4 transition-colors ${
-        onClick ? 'cursor-pointer hover:border-[--primary]/50 hover:bg-[--card]/80' : ''
+      className={`group relative flex h-[72px] w-full items-center gap-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 text-left transition-colors duration-150 hover:border-[var(--border-default)] hover:brightness-[1.06] ${
+        hasMine ? 'pl-5' : ''
       }`}
     >
-      {/* Teams + Score */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-right text-sm font-semibold text-[--foreground]">
-          {team1Name}
-        </span>
-
-        <div className="flex items-center gap-2 text-center">
-          {hasScore ? (
-            <span className="font-mono text-lg font-bold text-[--foreground]">
-              {team1Score} - {team2Score}
-            </span>
-          ) : (
-            <span className="text-sm text-[--muted-foreground]">vs</span>
-          )}
-        </div>
-
-        <span className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-[--foreground]">
-          {team2Name}
-        </span>
-      </div>
-
-      {/* Status + Meta */}
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-        <div className="flex items-center gap-2">
-          {status === 'LIVE' ? (
-            <Badge variant="destructive" className="animate-pulse text-[10px]">
-              LIVE
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[10px] text-[--muted-foreground]">
-              {status}
-            </Badge>
-          )}
-          {series && (
-            <span className="text-[--muted-foreground]">{series}</span>
-          )}
-          {(date || time) && (
-            <span className="text-[--muted-foreground]">
-              {date}
-              {date && time ? ' · ' : ''}
-              {time}
-            </span>
-          )}
-        </div>
-
-        {fantasyDelta !== undefined && <PointsDelta value={fantasyDelta} />}
-      </div>
-
-      {/* My rostered players */}
-      {myPlayerHandles && myPlayerHandles.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {myPlayerHandles.map((h) => (
-            <Badge
-              key={h}
-              variant="secondary"
-              className="text-[10px] font-normal"
-            >
-              {h}
-            </Badge>
-          ))}
-        </div>
+      {hasMine && (
+        <span className="absolute top-3 bottom-3 left-0 w-0.5 rounded-r-full bg-[var(--accent-primary)]" />
       )}
-    </div>
+      <div className="flex flex-1 items-center gap-3">
+        <TeamLogo name={team1Name} shortCode={team1ShortCode} size={28} />
+        <span className="font-display text-[16px] text-[var(--text-primary)]">{team1ShortCode}</span>
+        <span className="mx-2 font-display text-[22px] font-semibold tabular-nums text-[var(--text-primary)]">
+          {team1Score ?? '—'}
+        </span>
+        <span className="text-[var(--text-tertiary)]">–</span>
+        <span className="font-display text-[22px] font-semibold tabular-nums text-[var(--text-primary)]">
+          {team2Score ?? '—'}
+        </span>
+        <span className="font-display text-[16px] text-[var(--text-primary)]">{team2ShortCode}</span>
+        <TeamLogo name={team2Name} shortCode={team2ShortCode} size={28} />
+      </div>
+      <div className="flex items-center gap-2">
+        {status === 'LIVE' && (
+          <span className="inline-flex items-center gap-1.5">
+            <StatusDot tone="live" pulse />
+            <Badge variant="live">Live</Badge>
+          </span>
+        )}
+        {series && <Badge variant="neutral">{series}</Badge>}
+        {time && (
+          <span className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]">
+            {time}
+          </span>
+        )}
+        {date && (
+          <span className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]">
+            {date}
+          </span>
+        )}
+        {fantasyDelta !== undefined && fantasyDelta !== 0 && (
+          <PointsDelta value={fantasyDelta} />
+        )}
+      </div>
+    </button>
   );
 }

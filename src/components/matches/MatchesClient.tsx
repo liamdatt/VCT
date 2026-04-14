@@ -1,110 +1,79 @@
 'use client';
-
-import { useState, useMemo } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import * as React from 'react';
+import { MatchesTabs, type Tab } from './MatchesTabs';
+import { WeekGroup } from './WeekGroup';
 import { MatchCard } from '@/components/shared/MatchCard';
 import { MatchDrawer } from '@/components/shared/MatchDrawer';
 
-type MatchData = {
+type MatchRow = {
   id: string;
-  team1: { name: string };
-  team2: { name: string };
+  team1Name: string;
+  team1ShortCode: string;
+  team2Name: string;
+  team2ShortCode: string;
+  team1Wins: number;
+  team2Wins: number;
   status: 'UPCOMING' | 'LIVE' | 'COMPLETED';
   scheduledAt: string;
-  finalScore: string | null;
-  games: { mapNumber: number }[];
+  series: string;
+  fantasyDelta?: number;
 };
 
 type Props = {
-  upcoming: MatchData[];
-  live: MatchData[];
-  completed: MatchData[];
+  upcoming: MatchRow[];
+  live: MatchRow[];
+  completed: MatchRow[];
 };
 
+function groupByWeek(rows: MatchRow[]): Map<string, MatchRow[]> {
+  const groups = new Map<string, MatchRow[]>();
+  for (const r of rows) {
+    const key = r.series || 'All matches';
+    const list = groups.get(key) ?? [];
+    list.push(r);
+    groups.set(key, list);
+  }
+  return groups;
+}
+
 export function MatchesClient({ upcoming, live, completed }: Props) {
-  const defaultTab = live.length > 0 ? 'live' : 'upcoming';
-  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tab, setTab] = React.useState<Tab>(live.length > 0 ? 'live' : 'upcoming');
+  const [openId, setOpenId] = React.useState<string | null>(null);
 
-  const openMatch = (id: string) => {
-    setSelectedMatchId(id);
-    setDrawerOpen(true);
-  };
-
-  const renderMatches = (matches: MatchData[]) => {
-    if (matches.length === 0) {
-      return (
-        <p className="py-8 text-center text-sm text-[--muted-foreground]">
-          No matches.
-        </p>
-      );
-    }
-    return (
-      <div className="space-y-2">
-        {matches.map((m) => {
-          const scores = m.finalScore?.split('-').map((s) => s.trim()) ?? [];
-          const d = new Date(m.scheduledAt);
-          return (
-            <MatchCard
-              key={m.id}
-              team1Name={m.team1.name}
-              team2Name={m.team2.name}
-              team1Score={
-                m.status === 'COMPLETED'
-                  ? scores[0] ?? '—'
-                  : m.status === 'LIVE'
-                    ? m.games.length.toString()
-                    : undefined
-              }
-              team2Score={
-                m.status === 'COMPLETED'
-                  ? scores[1] ?? '—'
-                  : m.status === 'LIVE'
-                    ? ''
-                    : undefined
-              }
-              status={m.status}
-              date={d.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-              })}
-              time={d.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-              onClick={() => openMatch(m.id)}
-            />
-          );
-        })}
-      </div>
-    );
-  };
+  const source = tab === 'upcoming' ? upcoming : tab === 'live' ? live : completed;
+  const groups = groupByWeek(source);
 
   return (
-    <>
-      <Tabs defaultValue={defaultTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="upcoming">
-            Upcoming ({upcoming.length})
-          </TabsTrigger>
-          <TabsTrigger value="live">
-            Live ({live.length})
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Completed ({completed.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="upcoming">{renderMatches(upcoming)}</TabsContent>
-        <TabsContent value="live">{renderMatches(live)}</TabsContent>
-        <TabsContent value="completed">{renderMatches(completed)}</TabsContent>
-      </Tabs>
-
-      <MatchDrawer
-        matchId={selectedMatchId}
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-      />
-    </>
+    <div className="space-y-5">
+      <MatchesTabs active={tab} onChange={setTab} liveCount={live.length} />
+      {[...groups.entries()].map(([week, rows]) => (
+        <WeekGroup key={week} title={week}>
+          {rows.map((m) => {
+            const date = new Date(m.scheduledAt).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+            });
+            const t1s = m.status === 'UPCOMING' ? undefined : String(m.team1Wins);
+            const t2s = m.status === 'UPCOMING' ? undefined : String(m.team2Wins);
+            return (
+              <MatchCard
+                key={m.id}
+                team1Name={m.team1Name}
+                team1ShortCode={m.team1ShortCode}
+                team2Name={m.team2Name}
+                team2ShortCode={m.team2ShortCode}
+                team1Score={t1s}
+                team2Score={t2s}
+                status={m.status}
+                date={date}
+                fantasyDelta={m.fantasyDelta}
+                onClick={() => setOpenId(m.id)}
+              />
+            );
+          })}
+        </WeekGroup>
+      ))}
+      <MatchDrawer matchId={openId} open={!!openId} onClose={() => setOpenId(null)} />
+    </div>
   );
 }
