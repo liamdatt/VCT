@@ -319,7 +319,7 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
       </Card>
 
       {/* Per-match breakdown */}
-      {matchDataList.map(({ match, managerData, managersWithNoPlayers }) => (
+      {matchDataList.map(({ match, managerData, managersWithNoPlayers }, matchIdx) => (
         <Card key={match.id} padding="comfortable" className="space-y-4">
           {/* Match header */}
           <div className="border-b border-[var(--border-subtle)] pb-3">
@@ -560,22 +560,35 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
 
           {/* Interactive roster editor */}
           {(() => {
-            const rows = matchRosterByMatch.get(match.id) ?? [];
-            const byUser = new Map<string, { playerIds: string[]; captainPlayerId: string }>();
-            for (const r of rows) {
-              let entry = byUser.get(r.userId);
-              if (!entry) {
-                entry = { playerIds: [], captainPlayerId: '' };
-                byUser.set(r.userId, entry);
+            const buildRosters = (matchId: string) => {
+              const rows = matchRosterByMatch.get(matchId) ?? [];
+              const byUser = new Map<string, { playerIds: string[]; captainPlayerId: string }>();
+              for (const r of rows) {
+                let entry = byUser.get(r.userId);
+                if (!entry) {
+                  entry = { playerIds: [], captainPlayerId: '' };
+                  byUser.set(r.userId, entry);
+                }
+                entry.playerIds.push(r.playerId);
+                if (r.isCaptain) entry.captainPlayerId = r.playerId;
               }
-              entry.playerIds.push(r.playerId);
-              if (r.isCaptain) entry.captainPlayerId = r.playerId;
-            }
-            const initialRosters = Array.from(byUser.entries()).map(([userId, v]) => ({
-              userId,
-              playerIds: v.playerIds,
-              captainPlayerId: v.captainPlayerId,
-            }));
+              return Array.from(byUser.entries()).map(([userId, v]) => ({
+                userId,
+                playerIds: v.playerIds,
+                captainPlayerId: v.captainPlayerId,
+              }));
+            };
+            const initialRosters = buildRosters(match.id);
+
+            const prevMatch = matchIdx > 0 ? matchDataList[matchIdx - 1].match : null;
+            const prevRows = prevMatch ? matchRosterByMatch.get(prevMatch.id) ?? [] : [];
+            const previousRosters =
+              prevMatch && prevRows.length > 0 ? buildRosters(prevMatch.id) : null;
+            const previousMatchLabel =
+              prevMatch && previousRosters
+                ? `${prevMatch.team1.shortCode} vs ${prevMatch.team2.shortCode}`
+                : null;
+
             return (
               <MatchRosterEditor
                 matchId={match.id}
@@ -583,6 +596,8 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
                 managers={editorManagers}
                 initialRosters={initialRosters}
                 allPlayers={editorPlayers}
+                previousRosters={previousRosters}
+                previousMatchLabel={previousMatchLabel}
               />
             );
           })()}

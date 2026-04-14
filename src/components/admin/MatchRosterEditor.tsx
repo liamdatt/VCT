@@ -25,6 +25,12 @@ type Props = {
     captainPlayerId: string;
   }>;
   allPlayers: PlayerOption[];
+  previousRosters: Array<{
+    userId: string;
+    playerIds: string[];
+    captainPlayerId: string;
+  }> | null;
+  previousMatchLabel: string | null;
 };
 
 function padTo5(ids: string[]): string[] {
@@ -39,6 +45,8 @@ export function MatchRosterEditor({
   managers,
   initialRosters,
   allPlayers,
+  previousRosters,
+  previousMatchLabel,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -88,6 +96,25 @@ export function MatchRosterEditor({
       }
       return next;
     });
+  }
+
+  function copyFromPrevious() {
+    if (!previousRosters) return;
+    const validPlayerIds = new Set(allPlayers.map((p) => p.id));
+    const byUser = new Map(previousRosters.map((r) => [r.userId, r]));
+    const next: RosterState[] = managers.map((m) => {
+      const prev = byUser.get(m.userId);
+      if (!prev) {
+        return { userId: m.userId, playerIds: padTo5([]), captainPlayerId: '' };
+      }
+      const filtered = prev.playerIds.filter((pid) => validPlayerIds.has(pid));
+      const captain = validPlayerIds.has(prev.captainPlayerId) && filtered.includes(prev.captainPlayerId)
+        ? prev.captainPlayerId
+        : '';
+      return { userId: m.userId, playerIds: padTo5(filtered), captainPlayerId: captain };
+    });
+    setRosters(next);
+    setMessage(null);
   }
 
   function setCaptain(managerIdx: number, playerId: string) {
@@ -155,9 +182,22 @@ export function MatchRosterEditor({
           </h3>
           <Badge variant="neutral">EDIT</Badge>
         </div>
-        <Button variant="primary" size="sm" onClick={onSave} disabled={!canSubmit}>
-          {isPending ? 'Saving…' : 'Save & Recompute'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={copyFromPrevious}
+            disabled={!previousRosters || isPending}
+            title={previousRosters ? undefined : 'No saved rosters on the previous match'}
+          >
+            {previousMatchLabel
+              ? `Copy from previous (${previousMatchLabel})`
+              : 'Copy from previous'}
+          </Button>
+          <Button variant="primary" size="sm" onClick={onSave} disabled={!canSubmit}>
+            {isPending ? 'Saving…' : 'Save & Recompute'}
+          </Button>
+        </div>
       </div>
 
       {(validationErrors.length > 0 || conflicts.length > 0) && (
