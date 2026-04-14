@@ -1,25 +1,25 @@
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 
-interface AppShellProps {
+type Props = {
+  children: React.ReactNode;
   leagueName: string;
   leagueStatus: string;
   leagueSlug: string;
   isCommissioner: boolean;
   pendingTradesCount: number;
   hasLiveMatch: boolean;
-  children: React.ReactNode;
-}
+};
 
 export function AppShell({
+  children,
   leagueName,
   leagueStatus,
   leagueSlug,
   isCommissioner,
   pendingTradesCount,
   hasLiveMatch,
-  children,
-}: AppShellProps) {
+}: Props) {
   return (
     <>
       <Navbar
@@ -27,6 +27,7 @@ export function AppShell({
         leagueStatus={leagueStatus}
         leagueSlug={leagueSlug}
         isCommissioner={isCommissioner}
+        hasLiveMatch={hasLiveMatch}
       />
       <Sidebar
         leagueSlug={leagueSlug}
@@ -34,8 +35,10 @@ export function AppShell({
         pendingTradesCount={pendingTradesCount}
         hasLiveMatch={hasLiveMatch}
       />
-      <main className="pt-14 lg:pl-60">
-        <div className="mx-auto max-w-5xl p-6">{children}</div>
+      <main className="pt-[52px] lg:pl-60">
+        <div className="mx-auto w-full max-w-[1280px] px-5 py-10 md:px-8">
+          {children}
+        </div>
       </main>
     </>
   );
