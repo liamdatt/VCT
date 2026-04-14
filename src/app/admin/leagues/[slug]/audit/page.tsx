@@ -1,8 +1,12 @@
+import Link from 'next/link';
 import { db } from '@/lib/db';
 import { computeGamePoints } from '@/lib/scoring/rules';
 import { DEFAULT_LEAGUE_SETTINGS } from '@/lib/scoring/types';
 import type { LeagueSettings } from '@/lib/scoring/types';
 import { MatchRosterEditor } from '@/components/admin/MatchRosterEditor';
+import { Card, CardHeader } from '@/components/shared/Card';
+import { Badge } from '@/components/shared/Badge';
+import { DataTable, THead, Th, TBody, Tr, Td } from '@/components/shared/DataTable';
 
 export default async function AuditPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -13,7 +17,7 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
       memberships: { include: { user: true } },
     },
   });
-  if (!league) return <p className="p-6 text-[--foreground]">League not found.</p>;
+  if (!league) return <p className="p-8 text-[var(--text-primary)]">League not found.</p>;
 
   const settings: LeagueSettings = (league.settingsJson as LeagueSettings) ?? DEFAULT_LEAGUE_SETTINGS;
 
@@ -257,70 +261,85 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
   }
 
   return (
-    <main className="mx-auto max-w-7xl space-y-8 p-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[--foreground]">
-          Audit Trail &mdash; {league.name}
-        </h1>
-        <a
+        <div>
+          <h1 className="font-display text-[40px] leading-none font-medium text-[var(--text-primary)]">
+            Audit Trail
+          </h1>
+          <div className="mt-2 text-[12px] text-[var(--text-tertiary)]">{league.name}</div>
+        </div>
+        <Link
           href={`/admin/leagues/${slug}`}
-          className="text-sm text-[--muted-foreground] hover:text-[--foreground] underline"
+          className="text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
         >
-          &larr; Back to Admin
-        </a>
+          ← Back to admin
+        </Link>
       </div>
 
       {/* Summary section */}
-      <div className="rounded border border-[--border] bg-[--card] p-4">
-        <h2 className="mb-3 text-lg font-semibold text-[--foreground]">Manager Totals Summary</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[--border] text-left text-[--muted-foreground]">
-              <th className="pb-2">Manager</th>
-              <th className="pb-2 font-mono">Computed Total</th>
-              <th className="pb-2 font-mono">Snapshot Total</th>
-              <th className="pb-2 font-mono">Difference</th>
+      <Card padding="comfortable">
+        <CardHeader label="Manager totals summary" />
+        <DataTable>
+          <THead>
+            <tr>
+              <Th>Manager</Th>
+              <Th className="text-right">Computed</Th>
+              <Th className="text-right">Snapshot</Th>
+              <Th className="text-right">Diff</Th>
             </tr>
-          </thead>
-          <tbody>
+          </THead>
+          <TBody>
             {managers.map((m) => {
               const computed = managerTotals.get(m.userId) ?? 0;
               const snapshot = managerSnapshotTotals.get(m.userId) ?? 0;
               const diff = computed - snapshot;
               const hasDiff = Math.abs(diff) > 0.01;
               return (
-                <tr key={m.userId} className="border-b border-[--border]/50">
-                  <td className="py-1.5 text-[--foreground]">{m.user.username}</td>
-                  <td className="py-1.5 font-mono text-[--foreground]">{computed.toFixed(1)}</td>
-                  <td className="py-1.5 font-mono text-[--foreground]">{snapshot.toFixed(1)}</td>
-                  <td
-                    className={`py-1.5 font-mono ${hasDiff ? 'font-bold text-[--primary]' : 'text-[--chart-2]'}`}
+                <Tr key={m.userId} className={hasDiff ? 'bg-rose-500/[0.04]' : ''}>
+                  <Td>{m.user.username}</Td>
+                  <Td numeric className="text-right font-display tabular-nums">
+                    {computed.toFixed(1)}
+                  </Td>
+                  <Td numeric className="text-right">
+                    {snapshot.toFixed(1)}
+                  </Td>
+                  <Td
+                    numeric
+                    className={`text-right ${hasDiff ? 'font-semibold text-rose-400' : 'text-emerald-400'}`}
                   >
                     {diff > 0 ? '+' : ''}
                     {diff.toFixed(1)}
-                    {hasDiff && ' !!!'}
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+          </TBody>
+        </DataTable>
+      </Card>
 
       {/* Per-match breakdown */}
       {matchDataList.map(({ match, managerData, managersWithNoPlayers }) => (
-        <div key={match.id} className="rounded border border-[--border] bg-[--card] p-4 space-y-4">
+        <Card key={match.id} padding="comfortable" className="space-y-4">
           {/* Match header */}
-          <div className="border-b border-[--border] pb-2">
-            <h2 className="text-base font-semibold text-[--foreground]">
-              {match.team1.name} {match.finalScore ?? '?'} {match.team2.name}{' '}
-              <span className="text-xs text-[--muted-foreground]">({match.vlrMatchId})</span>
-            </h2>
-            <div className="mt-1 flex gap-3 text-xs text-[--muted-foreground]">
+          <div className="border-b border-[var(--border-subtle)] pb-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-display text-[20px] font-medium text-[var(--text-primary)]">
+                {match.team1.name}{' '}
+                <span className="font-mono tabular-nums text-[var(--text-secondary)]">
+                  {match.finalScore ?? '?'}
+                </span>{' '}
+                {match.team2.name}
+              </h2>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">
+                {match.vlrMatchId}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
               {match.games.map((g) => (
-                <span key={g.id}>
-                  Map {g.mapNumber}: {g.mapName} ({g.team1Score}-{g.team2Score})
-                </span>
+                <Badge key={g.id} variant="neutral">
+                  Map {g.mapNumber} · {g.mapName} {g.team1Score}-{g.team2Score}
+                </Badge>
               ))}
             </div>
           </div>
@@ -328,29 +347,29 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
           {/* Per-map stat tables */}
           {match.games.map((game) => (
             <div key={game.id}>
-              <h3 className="mb-1 text-sm font-medium text-[--muted-foreground]">
+              <div className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">
                 Map {game.mapNumber}: {game.mapName} ({game.team1Score}-{game.team2Score})
-              </h3>
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-[--border] text-left text-[--muted-foreground]">
-                      <th className="pb-1 pr-2">Player</th>
-                      <th className="pb-1 pr-2">Team</th>
-                      <th className="pb-1 pr-2 font-mono">K</th>
-                      <th className="pb-1 pr-2 font-mono">D</th>
-                      <th className="pb-1 pr-2 font-mono">A</th>
-                      <th className="pb-1 pr-2 font-mono">Aces</th>
-                      <th className="pb-1 pr-2">W/L</th>
-                      <th className="pb-1 pr-2">Owner</th>
-                      <th className="pb-1 pr-2">Cpt?</th>
-                      <th className="pb-1 pr-2 font-mono">Pts</th>
-                      <th className="pb-1 pr-2 font-mono">w/ Cpt</th>
-                      <th className="pb-1 pr-2 font-mono">Snapshot</th>
-                      <th className="pb-1 pr-2">Status</th>
+                <DataTable>
+                  <THead>
+                    <tr>
+                      <Th>Player</Th>
+                      <Th>Team</Th>
+                      <Th className="text-right">K</Th>
+                      <Th className="text-right">D</Th>
+                      <Th className="text-right">A</Th>
+                      <Th className="text-right">Aces</Th>
+                      <Th>W/L</Th>
+                      <Th>Owner</Th>
+                      <Th>Cpt</Th>
+                      <Th className="text-right">Pts</Th>
+                      <Th className="text-right">w/Cpt</Th>
+                      <Th className="text-right">Snap</Th>
+                      <Th>Status</Th>
                     </tr>
-                  </thead>
-                  <tbody>
+                  </THead>
+                  <TBody>
                     {game.stats.map((stat) => {
                       const owner = playerOwnerMap.get(stat.playerId);
                       const breakdown = computeGamePoints(
@@ -389,127 +408,142 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
                       const discrepancy =
                         hasSnapshot && Math.abs(snapshotVal! - withCaptain) > 0.01;
 
-                      let statusText = '';
-                      let statusClass = '';
+                      let statusNode: React.ReactNode = null;
+                      let rowClass = '';
                       if (!owner) {
-                        statusText = hasSnapshot ? 'FA (has snap)' : 'Free Agent';
-                        statusClass = 'text-[--muted-foreground]';
+                        statusNode = (
+                          <span className="text-[var(--text-tertiary)]">
+                            {hasSnapshot ? 'FA (has snap)' : 'Free Agent'}
+                          </span>
+                        );
                       } else if (!hasSnapshot) {
-                        statusText = 'MISSING SNAPSHOT';
-                        statusClass = 'font-bold text-[--primary]';
+                        statusNode = (
+                          <span className="font-semibold text-rose-400">MISSING SNAPSHOT</span>
+                        );
+                        rowClass = 'bg-rose-500/[0.04]';
                       } else if (discrepancy) {
-                        statusText = `MISMATCH (${snapshotVal!.toFixed(1)})`;
-                        statusClass = 'font-bold text-[--primary]';
+                        statusNode = (
+                          <span className="font-semibold text-rose-400">
+                            MISMATCH ({snapshotVal!.toFixed(1)})
+                          </span>
+                        );
+                        rowClass = 'bg-rose-500/[0.04]';
                       } else {
-                        statusText = 'OK';
-                        statusClass = 'text-[--chart-2]';
+                        statusNode = <span className="text-emerald-400">OK</span>;
                       }
 
                       return (
-                        <tr key={stat.id} className="border-b border-[--border]/30">
-                          <td className="py-1 pr-2 text-[--foreground]">
-                            {stat.player.handle}
-                          </td>
-                          <td className="py-1 pr-2 text-[--muted-foreground]">
+                        <Tr key={stat.id} className={rowClass}>
+                          <Td>{stat.player.handle}</Td>
+                          <Td className="text-[var(--text-tertiary)]">
                             {stat.player.team.shortCode}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
+                          </Td>
+                          <Td numeric className="text-right">
                             {stat.kills}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
+                          </Td>
+                          <Td numeric className="text-right">
                             {stat.deaths}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
+                          </Td>
+                          <Td numeric className="text-right">
                             {stat.assists}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
+                          </Td>
+                          <Td numeric className="text-right">
                             {stat.aces}
-                          </td>
-                          <td className="py-1 pr-2 text-[--foreground]">
+                          </Td>
+                          <Td>
                             {stat.won ? (
-                              <span className="text-[--chart-2]">WIN</span>
+                              <Badge variant="win">W</Badge>
                             ) : (
-                              <span className="text-[--primary]">LOSS</span>
+                              <Badge variant="loss">L</Badge>
                             )}
-                          </td>
-                          <td className="py-1 pr-2 text-[--foreground]">
-                            {owner?.username ?? (
-                              <span className="text-[--muted-foreground]">Free Agent</span>
+                          </Td>
+                          <Td>
+                            {owner?.username ? (
+                              <Badge variant="neutral">{owner.username}</Badge>
+                            ) : (
+                              <span className="text-[var(--text-tertiary)]">Free Agent</span>
                             )}
-                          </td>
-                          <td className="py-1 pr-2 text-center">
-                            {isCaptain && <span className="text-yellow-400">★</span>}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
+                          </Td>
+                          <Td>
+                            {isCaptain && (
+                              <span className="text-[var(--accent-primary)]">★</span>
+                            )}
+                          </Td>
+                          <Td numeric className="text-right">
                             {breakdown.total.toFixed(1)}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
-                            {isCaptain ? withCaptain.toFixed(1) : '-'}
-                          </td>
-                          <td className="py-1 pr-2 font-mono text-[--foreground]">
-                            {snapshotVal !== null ? snapshotVal.toFixed(1) : '-'}
-                          </td>
-                          <td className={`py-1 pr-2 ${statusClass}`}>{statusText}</td>
-                        </tr>
+                          </Td>
+                          <Td numeric className="text-right">
+                            {isCaptain ? withCaptain.toFixed(1) : '—'}
+                          </Td>
+                          <Td numeric className="text-right">
+                            {snapshotVal !== null ? snapshotVal.toFixed(1) : '—'}
+                          </Td>
+                          <Td>{statusNode}</Td>
+                        </Tr>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </TBody>
+                </DataTable>
               </div>
             </div>
           ))}
 
           {/* Per-manager summary */}
-          <div className="border-t border-[--border] pt-3">
-            <h3 className="mb-2 text-sm font-semibold text-[--foreground]">
-              Per-Manager Breakdown
-            </h3>
+          <div className="border-t border-[var(--border-subtle)] pt-3">
+            <div className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">
+              Per-manager breakdown
+            </div>
             {managerData.length === 0 && (
-              <p className="text-xs text-[--muted-foreground]">
+              <p className="text-[12px] text-[var(--text-tertiary)]">
                 No managers had players in this match.
               </p>
             )}
             {managerData.map((md) => (
               <div key={md.userId} className="mb-3">
-                <div className="text-sm text-[--foreground]">
-                  <span className="font-medium">{md.username}</span>
+                <div className="flex items-center gap-2 text-[13px]">
+                  <span className="font-medium text-[var(--text-primary)]">{md.username}</span>
                   {md.captainHandle && (
-                    <span className="ml-2 text-xs text-yellow-400">
-                      Captain: {md.captainHandle}★
+                    <span className="text-[12px] text-[var(--accent-primary)]">
+                      ★ {md.captainHandle}
                     </span>
                   )}
-                  <span className="ml-2 font-mono text-xs text-[--muted-foreground]">
-                    Match total: {md.matchTotal.toFixed(1)}
+                  <span className="ml-auto font-display font-semibold tabular-nums text-[var(--text-primary)]">
+                    {md.matchTotal.toFixed(1)}
                   </span>
                 </div>
                 <div className="ml-4 mt-1 space-y-0.5">
                   {md.players.map((p) => (
-                    <div key={p.playerId} className="text-xs text-[--foreground]">
-                      <span className="font-medium">{p.handle}</span>
+                    <div key={p.playerId} className="text-[12px] text-[var(--text-secondary)]">
+                      <span className="font-medium text-[var(--text-primary)]">{p.handle}</span>
                       {p.maps.map((m) => (
-                        <span key={m.mapNumber} className="ml-2 font-mono text-[--muted-foreground]">
-                          Map{m.mapNumber}: K:{m.kills} D:{m.deaths} A:{m.assists}{' '}
+                        <span
+                          key={m.mapNumber}
+                          className="ml-2 font-mono text-[var(--text-tertiary)]"
+                        >
+                          M{m.mapNumber}: {m.kills}/{m.deaths}/{m.assists}{' '}
                           {m.won ? (
-                            <span className="text-[--chart-2]">W</span>
+                            <span className="text-emerald-400">W</span>
                           ) : (
-                            <span className="text-[--primary]">L</span>
+                            <span className="text-rose-400">L</span>
                           )}{' '}
                           ={' '}
-                          <span className="text-[--foreground]">
+                          <span className="tabular-nums text-[var(--text-primary)]">
                             {m.captainMultiplied.toFixed(1)}
                             {m.isCaptain && '★'}
                           </span>
                           {!m.snapshotExists && (
-                            <span className="ml-1 font-bold text-[--primary]">MISSING SNAPSHOT</span>
+                            <span className="ml-1 font-semibold text-rose-400">
+                              MISSING SNAPSHOT
+                            </span>
                           )}
                           {m.discrepancy && (
-                            <span className="ml-1 font-bold text-[--primary]">
-                              MISMATCH(snap={m.snapshotTotal!.toFixed(1)})
+                            <span className="ml-1 font-semibold text-rose-400">
+                              MISMATCH (snap={m.snapshotTotal!.toFixed(1)})
                             </span>
                           )}
                         </span>
                       ))}
-                      <span className="ml-2 font-mono text-[--muted-foreground]">
+                      <span className="ml-2 font-mono tabular-nums text-[var(--text-tertiary)]">
                         = {p.matchTotal.toFixed(1)} pts
                       </span>
                     </div>
@@ -518,7 +552,7 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
               </div>
             ))}
             {managersWithNoPlayers.length > 0 && (
-              <div className="mt-2 text-xs text-[--muted-foreground]">
+              <div className="mt-2 text-[12px] text-[var(--text-tertiary)]">
                 Managers with no players in this match: {managersWithNoPlayers.join(', ')}
               </div>
             )}
@@ -552,12 +586,12 @@ export default async function AuditPage({ params }: { params: Promise<{ slug: st
               />
             );
           })()}
-        </div>
+        </Card>
       ))}
 
       {matches.length === 0 && (
-        <p className="text-[--muted-foreground]">No completed matches found for this league.</p>
+        <p className="text-[var(--text-tertiary)]">No completed matches found for this league.</p>
       )}
-    </main>
+    </div>
   );
 }

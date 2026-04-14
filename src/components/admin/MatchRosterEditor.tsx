@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateMatchRoster } from '@/lib/actions/match-roster';
+import { Button } from '@/components/shared/Button';
+import { Badge } from '@/components/shared/Badge';
 
 type Manager = { userId: string; username: string };
 type PlayerOption = { id: string; handle: string; teamName: string };
@@ -145,36 +147,36 @@ export function MatchRosterEditor({
   }
 
   return (
-    <div className="rounded border border-yellow-600/60 bg-[--card] p-4 space-y-3">
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-yellow-400">Edit Rosters (per-match)</h3>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!canSubmit}
-          className="rounded bg-[--primary] px-3 py-1.5 text-sm font-semibold text-white shadow hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        <div className="flex items-center gap-2">
+          <h3 className="font-display text-[14px] font-medium text-[var(--text-primary)]">
+            Edit Rosters
+          </h3>
+          <Badge variant="neutral">EDIT</Badge>
+        </div>
+        <Button variant="primary" size="sm" onClick={onSave} disabled={!canSubmit}>
           {isPending ? 'Saving…' : 'Save & Recompute'}
-        </button>
+        </Button>
       </div>
 
       {(validationErrors.length > 0 || conflicts.length > 0) && (
-        <div className="space-y-1 rounded border border-[--primary]/50 bg-[--primary]/10 p-2 text-xs">
+        <div className="space-y-1 rounded-md border border-rose-500/20 bg-rose-500/10 p-2 text-[12px] text-rose-400">
           {validationErrors.map((e, i) => (
-            <div key={`v${i}`} className="text-[--primary]">• {e}</div>
+            <div key={`v${i}`}>• {e}</div>
           ))}
           {conflicts.map((e, i) => (
-            <div key={`c${i}`} className="text-[--primary]">⚠ {e}</div>
+            <div key={`c${i}`}>⚠ {e}</div>
           ))}
         </div>
       )}
 
       {message && (
         <div
-          className={`rounded border p-2 text-xs ${
+          className={`rounded-md border p-2 text-[12px] ${
             message.kind === 'ok'
-              ? 'border-[--chart-2]/50 bg-[--chart-2]/10 text-[--chart-2]'
-              : 'border-[--primary]/50 bg-[--primary]/10 text-[--primary]'
+              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+              : 'border-rose-500/20 bg-rose-500/10 text-rose-400'
           }`}
         >
           {message.text}
@@ -187,9 +189,9 @@ export function MatchRosterEditor({
           return (
             <div
               key={r.userId}
-              className="rounded border border-[--border] bg-[--card] p-3"
+              className="rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3"
             >
-              <div className="mb-2 text-sm font-medium text-[--foreground]">
+              <div className="mb-2 text-[13px] font-medium text-[var(--text-primary)]">
                 {manager?.username ?? r.userId}
               </div>
               <div className="space-y-1.5">
@@ -205,15 +207,15 @@ export function MatchRosterEditor({
                         disabled={!pid}
                         onChange={() => setCaptain(managerIdx, pid)}
                         title="Captain"
-                        className="accent-yellow-400"
+                        className="accent-[var(--accent-primary)]"
                       />
                       <select
                         value={pid}
                         onChange={(e) => setSlot(managerIdx, slotIdx, e.target.value)}
-                        className={`flex-1 rounded border bg-slate-800 px-1.5 py-1 text-xs text-white ${
+                        className={`h-7 flex-1 rounded-md border bg-[var(--bg-canvas)] px-2 text-[12px] text-[var(--text-primary)] ${
                           isConflict
-                            ? 'border-[--primary] text-[--primary]'
-                            : 'border-[--border]'
+                            ? 'border-rose-500/40 text-rose-400'
+                            : 'border-[var(--border-default)]'
                         }`}
                       >
                         <option value="">— select player —</option>
