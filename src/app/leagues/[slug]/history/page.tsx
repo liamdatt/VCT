@@ -1,29 +1,36 @@
 import { getLeagueHistory } from '@/server/queries/history';
-import { HistoryClient } from '@/components/history/HistoryClient';
+import { db } from '@/lib/db';
+import { HistoryTimeline } from '@/components/history/HistoryTimeline';
 
-export default async function HistoryPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function HistoryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const events = await getLeagueHistory(slug);
-
-  // Serialize for client
-  const serialized = events.map((e) => ({
-    id: e.id,
-    type: e.type,
-    description: e.description,
-    timestamp: e.timestamp.toISOString(),
-    managers: e.managers,
-  }));
-
-  const allManagers = [...new Set(events.flatMap((e) => e.managers))].sort();
+  const league = await db.league.findUnique({
+    where: { slug },
+    include: { memberships: { include: { user: true } } },
+  });
+  const managers = league?.memberships.map((m) => m.user.username).sort() ?? [];
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-[--foreground]">History</h1>
-      <HistoryClient events={serialized} allManagers={allManagers} />
+    <div className="space-y-6">
+      <div>
+        <h1 className="font-display text-[40px] leading-none font-medium text-[var(--text-primary)]">
+          History
+        </h1>
+        <p className="mt-1 text-[13px] text-[var(--text-tertiary)]">
+          Every trade, free-agency pickup, and captain change — in order.
+        </p>
+      </div>
+      <HistoryTimeline
+        events={events.map((e) => ({
+          id: e.id,
+          type: e.type,
+          description: e.description,
+          timestamp: e.timestamp.toISOString(),
+          managers: e.managers,
+        }))}
+        managers={managers}
+      />
     </div>
   );
 }
