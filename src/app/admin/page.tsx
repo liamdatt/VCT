@@ -4,6 +4,8 @@ import { Card } from '@/components/shared/Card';
 import { Button } from '@/components/shared/Button';
 import { Badge } from '@/components/shared/Badge';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminHomePage() {
   const leagues = await db.league.findMany({ orderBy: { startDate: 'desc' } });
   return (
